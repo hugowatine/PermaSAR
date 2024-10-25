@@ -15,6 +15,11 @@ def linear_regression(y):
     m, _ = np.linalg.lstsq(A, y, rcond=None)[0]  # m est la pente
     return m
 
+def read_band(band_idx, file_path, line, ncol, num_lines):
+    ds = gdal.Open(file_path)  # Chaque processus ouvre son propre dataset
+    band = ds.GetRasterBand(band_idx)
+    return band.ReadAsArray(0, line, ncol, num_lines)
+
 def init(arr):
     global formatted_dates
     formatted_dates=arr
@@ -57,7 +62,10 @@ if __name__ == '__main__':
             # Extraire la série temporelle pour chaque pixel
             t2 = time.time()
             #line_time_series = np.array([ds.GetRasterBand(b+1).ReadAsArray(0, line, ncol, 1) for b in range(N)])
-            temp_array = [ds.GetRasterBand(b+1).ReadAsArray(0, line, ncol, end_line - line) for b in range(N)]
+            results = [pool.apply_async(read_band, args=(i+1, fcube, line, ncol, end_line - line)) for i in range(N)]
+            bands_data = [result.get() for result in results]
+            temp_array = np.concatenate([np.expand_dims(band, axis=0) for band in bands_data], axis=0)
+
             t21 = time.time()
             line_time_series = np.array(temp_array)
             t22 = time.time()
