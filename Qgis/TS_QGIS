@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+from qgis.core import QgsPointXY, QgsProject, QgsRasterLayer, QgsRaster
+from qgis.gui import QgsMapTool
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from datetime import datetime
+
+
+class PointTool(QgsMapTool):
+    def __init__(self, canvas, raster_layer_name, data_type, meta_file_path):
+        self.canvas = canvas
+        self.raster_layer_name = raster_layer_name
+        self.data_type = data_type
+        self.meta_file_path = meta_file_path
+        super().__init__(self.canvas)
+    
+    def canvasReleaseEvent(self, event):
+        # Récupérer la position du clic en coordonnées de la carte
+        point = self.toMapCoordinates(event.pos())
+        
+        # Extraire la longitude et la latitude
+        longitude = point.x()
+        latitude = point.y()
+        
+        # Afficher les coordonnées dans la console
+        print(f"Longitude : {longitude}, Latitude : {latitude}")
+        
+        # Obtenir la couche raster à partir de son nom
+        raster_layer = None
+        for layer in QgsProject.instance().mapLayers().values():
+            if isinstance(layer, QgsRasterLayer) and layer.name() == self.raster_layer_name:
+                raster_layer = layer
+                break
+        
+        if raster_layer:
+            # Convertir les coordonnées du clic dans le système de coordonnées de la couche raster
+            ident_result = raster_layer.dataProvider().identify(point, QgsRaster.IdentifyFormatValue)
+            
+            # Si on trouve des données dans cette couche raster au point cliqué
+            if ident_result.isValid():
+                pixel_value = ident_result.results()
+                #print(f"Valeur du pixel dans la couche '{raster_layer.name()}': {pixel_value}")
+                if self.data_type == 'FLATSIM':
+                    flatsim_TS([pixel_value.get(key, float('nan')) for key in sorted(pixel_value.keys())], self.meta_file_path)
+            else:
+            # Je crois que ca ne marche pas ce else la     
+                print(f"Le point cliqué ne contient pas de données dans la couche raster '{raster_layer.name()}'.")
+        else:
+            print(f"La couche raster '{self.raster_layer_name}' n'a pas été trouvée.")
+
+def flatsim_TS(LOS, meta_file_path):
+    df = pd.read_csv(meta_file_path, delim_whitespace=True, header=None, names=['Band', 'Date', 'RMS'])
+    # Convertir la colonne 'Date' au format datetime
+    df['Date'] = pd.to_datetime(df['Date'], format='%Y%m%d')
+
+    # Afficher les premières lignes du DataFrame pour vérifier
+    print(df.head())
+    
+    # Associer les valeurs de LOS aux dates correspondant aux bandes
+    # Créer un DataFrame avec les valeurs de LOS et les dates
+    # Mutliplication asssociée
+
+    df_LOS = pd.DataFrame({
+        'Date': df['Date'],
+        'LOS': LOS,
+        'RMS': df['RMS']
+    })
+    df_LOS['LOS'] = df_LOS['LOS']*-4.413824938174363
+    # Afficher la time series avec les barres d'erreur
+    plot_time_series(df_LOS)
+    
+def date2dec(dates):
+    dates = np.atleast_1d(dates)
+    times = []
+    for date in dates:
+        x = datetime.strptime('{}'.format(date), '%Y%m%d')
+        dec = float(x.strftime('%j')) / 365.25  # Utiliser 365.25 pour inclure les années bissextiles
+        year = float(x.strftime('%Y'))
+        times.append(year + dec)
+    return np.array(times)
+
+# Plot les points et la régression avec les années décimales
+def plot_time_series(df_LOS):
+    # Convertir les dates en années décimales
+    years_decimal = date2dec(df_LOS['Date'].dt.strftime('%Y%m%d'))
+    #years_decimal = years_decimal_0-min(years_decimal)
+    #years_decimal_0 = years_decimal
+    #years_decimal = years_decimal-min(years_decimal)
+    #print('coucou', years_decimal_0)
+
+    plt.figure(figsize=(10, 6))
+    
+    # Afficher les points avec les barres d'erreur
+    plt.errorbar(years_decimal, df_LOS['LOS'], yerr=df_LOS['RMS'], fmt='o', color='b', capsize=5, label='Données')
+    
+    # Calculer la droite de régression
+    reg_type = 'acc'
+    params = fit_linear_model(years_decimal, df_LOS['LOS'], df_LOS['RMS'], reg_type)
+
+    # Tracer la droite de régression
+    x = np.linspace(np.min(years_decimal), np.max(years_decimal), 1000) #- np.min(years_decimal) 
+    print(len(x))
+    if reg_type == 'lin':
+        y =  params[0] * x + params[1]
+        plt.plot(x, y, color='r', label=f'a.x + b : (a = {params[0]:.4f}, b = {params[1]:.4f})')
+    if reg_type == 'amp':
+        y =  params[0] * x + params[1] + np.sqrt(params[2]**2 + params[3]**2)*np.cos(2*np.pi*x+np.arctan2(-params[3],params[2]))
+        plt.plot(x, y, color='r', label=f'a.x + b + c.cos(2.pi.x + phi) (a = {params[0]:.4f}, b = {params[1]:.4f}, c = {np.sqrt(params[2]**2 + params[3]**2):.4f}, phi = {np.arctan2(-params[3],params[2]):.4f})')
+    if reg_type == 'acc':
+        y =  params[0] * x**2 + params[1] * x + params[2] + np.sqrt(params[3]**2 + params[4]**2)*np.cos(2*np.pi*x+np.arctan2(-params[4],params[3]))
+        plt.plot(x, y, color='r', label=f'a.x**2 + bx + e + c.cos(2.pi.x + phi) (a = {params[0]:.4f}, b = {params[1]:.4f}, e = {params[2]:.4f}, c = {np.sqrt(params[3]**2 + params[4]**2):.4f}, phi = {np.arctan2(-params[4],params[3]):.4f})')
+    if reg_type =='ampi':
+        y =  params[0] * x + params[1] + (np.sqrt(params[2]**2 + params[3]**2) + x*np.sqrt(params[4]**2 + params[5]**2))*np.cos(2*np.pi*x+np.arctan2(-params[3],params[2]))
+        plt.plot(x, y, color='r', label=f'a.x + b + c.cos(2.pi.x + phi) (a = {params[0]:.4f}, b = {params[1]:.4f}, c = {np.sqrt(params[2]**2 + params[3]**2):.4f}, phi = {np.arctan2(-params[3],params[2]):.4f})')
+    
+    #plt.xticks(years_decimal, years_decimal_0)
+    plt.title('Séries temporelles pour le pixel sélectionné')
+    plt.xlabel('Année (décimale)')
+    plt.ylabel('LOS mm/yr')
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    plt.legend()
+    plt.tight_layout()
+    #plt.ylim([-55, 5])
+    plt.show()
+
+# Fonction feet() pour ajuster un modèle linéaire
+def fit_linear_model(x, data, RMS, reg_type='lin'):
+    if reg_type == 'lin':
+        G = np.vstack([x, np.ones_like(x)]).T  
+    if reg_type == 'amp':
+        G = np.vstack([x, np.ones_like(x), np.cos(2*np.pi*x), np.sin(2*np.pi*x)]).T
+    if reg_type == 'acc':
+        G = np.vstack([x**2, x, np.ones_like(x), np.cos(2*np.pi*x), np.sin(2*np.pi*x)]).T
+    if reg_type =='ampi':
+        G = np.vstack([x, np.ones_like(x), np.cos(2*np.pi*x), np.sin(2*np.pi*x), x*np.cos(2*np.pi*x), x*np.sin(2*np.pi*x)]).T
+        
+    Cd = np.diag(RMS ** 2)  # Matrice de covariance basée sur RMS
+
+    # Calcul du paramètre de régression a et b en minimisant les moindres carrés pondérés
+    params = np.dot(np.linalg.inv(np.dot(np.dot(G.T, np.linalg.inv(Cd)), G)),
+                    np.dot(np.dot(G.T, np.linalg.inv(Cd)), data))
+
+    return params
+    
+
+
+# Obtenir la référence du canvas de QGIS
+canvas = iface.mapCanvas()
+
+# Afficher les noms des couches raster présentes dans le projet
+#for layer in QgsProject.instance().mapLayers().values():
+#    if isinstance(layer, QgsRasterLayer):
+#        print(f"Nom de la couche raster : {layer.name()}")
+
+project_crs = QgsProject.instance().crs()
+
+# Vérifier si le système de coordonnées est EPSG:4326 (WGS 84)
+if project_crs.authid() == "EPSG:4326":
+    print("Le projet est en WGS 84 (EPSG:4326). OK")
+else:
+    print(f"Le projet utilise un autre CRS : {project_crs.authid()} ({project_crs.description()}). Changer pour EPSG:4326")
+
+
+#Type de donnée
+data_type = 'FLATSIM'
+# Choix de la couche raster
+raster_name = "DO19_sud_CNES_DTs_geo_8rlks_HP70"  # Sans le .tif
+# Dates et RMS associé
+meta_file_path = "/Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/Analyse_JourneeFlatsim/Data/Raster/D019_sud/RMSdate.txt"
+
+
+point_tool = PointTool(canvas, raster_name, data_type, meta_file_path)
+
+# Activer l'outil sur le canvas
+canvas.setMapTool(point_tool)
+

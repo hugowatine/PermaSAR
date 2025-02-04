@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+
+from qgis.core import QgsPointXY
+from qgis.gui import QgsMapTool
+import os
+from osgeo import gdal
+import numpy as np
+import pandas as pd
+from scipy.ndimage import uniform_filter1d, gaussian_filter1d
+
+class PointTool(QgsMapTool):
+    def __init__(self, canvas, asc_raster_path, dsc_raster_path, data_type, asc_RMSdate_path, dsc_RMSdate_path, asc_H_path, dsc_H_path, asc_I_path, dsc_I_path, aspect_path, slope_path):
+        super().__init__(canvas)
+        self.canvas = canvas
+        self.asc_raster_path = asc_raster_path
+        self.dsc_raster_path = dsc_raster_path
+        self.data_type = data_type
+        self.asc_RMSdate_path = asc_RMSdate_path
+        self.dsc_RMSdate_path = dsc_RMSdate_path
+        
+        self.asc_H_path = asc_H_path
+        self.dsc_H_path = dsc_H_path
+        self.asc_I_path = asc_I_path
+        self.dsc_I_path = dsc_I_path
+        self.slope_path = slope_path
+        self.aspect_path = aspect_path
+        self.px = 0
+        self.py = 0
+
+    def read_raster_values_optimized(self, raster_path, longitude, latitude):
+        if not os.path.exists(raster_path):
+            print(f"Erreur : Le fichier raster '{raster_path}' n'existe pas.")
+            return None
+        
+        # Ouvrir le raster avec GDAL
+        raster = gdal.Open(raster_path, gdal.GA_ReadOnly)
+        if not raster:
+            print(f"Erreur : Impossible d'ouvrir le raster '{raster_path}'.")
+            return None
+
+        # Obtenir les informations géoréférencées
+        transform = raster.GetGeoTransform()
+        inv_transform = gdal.InvGeoTransform(transform)
+
+        # Convertir les coordonnées longitude/latitude en indices de pixels
+        px, py = gdal.ApplyGeoTransform(inv_transform, longitude, latitude)
+        px, py = int(px), int(py)
+        self.px = round(longitude, 3)
+        self.py = round(latitude, 3)
+
+        # Vérifier si les indices sont dans les limites
+        if px < 0 or py < 0 or px >= raster.RasterXSize or py >= raster.RasterYSize:
+            print(f"Erreur : Le point ({longitude}, {latitude}) est en dehors des limites du raster '{raster_path}'.")
+            return None
+
+        # Lire toutes les bandes simultanément
+        data = raster.ReadAsArray(px, py, 1, 1)
+        if data is None:
+            print(f"Erreur : Impossible de lire les données au point ({px}, {py}) dans le raster '{raster_path}'.")
+            return None
+
+        # Si une seule bande, retourner une liste
+        if len(data.shape) == 2:
+            return [float(data[0, 0])]
+        
+        # Convertir en liste pour plusieurs bandes
+        return list(data[:, 0, 0])
+        
+    def canvasReleaseEvent(self, event):
+        # Récupérer la position du clic en coordonnées de la carte
+        point = self.toMapCoordinates(event.pos())
+        
+        # Extraire la longitude et la latitude
+        longitude, latitude = point.x(), point.y()
+        print(f"Longitude : {longitude}, Latitude : {latitude}")
+
+        # Obtenir les valeurs des pixels pour toutes les bandes des rasters ASC et DSC
+        asc_values = self.read_raster_values_optimized(self.asc_raster_path, longitude, latitude)
+        dsc_values = self.read_raster_values_optimized(self.dsc_raster_path, longitude, latitude)
+
+        # Obtenir les valeurs pour les rasters supplémentaires (azimut et incidence)
+        asc_heading = self.read_raster_values_optimized(self.asc_H_path, longitude, latitude)
+        dsc_heading = self.read_raster_values_optimized(self.dsc_H_path, longitude, latitude)
+        asc_incidence = self.read_raster_values_optimized(self.asc_I_path, longitude, latitude)
+        dsc_incidence = self.read_raster_values_optimized(self.dsc_I_path, longitude, latitude)
+        slope = self.read_raster_values_optimized(self.slope_path, longitude, latitude)
+        aspect = self.read_raster_values_optimized(self.aspect_path, longitude, latitude)
+
+        # Afficher les valeurs extraites
+        if asc_values is not None:
+            print(f"Valeurs des pixels (5 premières bandes) dans le raster ASC : {asc_values[:5]}")
+        if dsc_values is not None:
+            print(f"Valeurs des pixels (5 premières bandes) dans le raster DSC : {dsc_values[:5]}")
+        
+        if asc_heading is not None:
+            print(f"Valeurs heading dans le raster ASC : {asc_heading}")
+        if dsc_heading is not None:
+            print(f"Valeurs heading dans le raster DSC : {dsc_heading}")
+        
+        if asc_incidence is not None:
+            print(f"Valeurs d'incidence dans le raster ASC : {asc_incidence}")
+        if dsc_incidence is not None:
+            print(f"Valeurs d'incidence dans le raster DSC : {dsc_incidence}")
+            
+        if asc_incidence is not None:
+            print(f"Valeurs de la pente : {slope}")
+        if dsc_incidence is not None:
+            print(f"Valeurs de l'aspect' : {aspect}")
+            
+        spatial_param = {"slope": np.radians(slope[0]), "aspect": -np.radians(aspect[0]), "asc_H": np.radians(-asc_heading[0]-90), "dsc_H": np.radians(-dsc_heading[0]-90), "asc_I": np.radians(90 - asc_incidence[0]), "dsc_I": np.radians(90 - dsc_incidence[0])}
+        print(spatial_param)
+        
+        if self.data_type == 'FLATSIM':
+            flatsim_TS(asc_values, dsc_values, self.asc_RMSdate_path, self.dsc_RMSdate_path, [self.px, self.py], spatial_param)
+
+
+            
+def flatsim_TS(ascLOS, dscLOS, ascRMSdatef, dscRMSdatef, pixel, spatial_param=None):
+    
+    ascdf = pd.read_csv(ascRMSdatef, delim_whitespace=True, header=None, names=['Band', 'Date', 'RMS'])
+    dscdf = pd.read_csv(dscRMSdatef, delim_whitespace=True, header=None, names=['Band', 'Date', 'RMS'])
+    
+    # Convertir la colonne 'Date' au format datetime
+    ascdf['Date'] = pd.to_datetime(ascdf['Date'], format='%Y%m%d')
+    dscdf['Date'] = pd.to_datetime(dscdf['Date'], format='%Y%m%d')
+    ascdf['Date'] = date2dec(ascdf['Date'].dt.strftime('%Y%m%d'))
+    dscdf['Date'] = date2dec(dscdf['Date'].dt.strftime('%Y%m%d'))
+
+    # Afficher les premières lignes du DataFrame pour vérifier
+    #print(ascdf.head())
+    #print(dscdf.head())
+    
+    # Associer les valeurs de LOS aux dates correspondant aux bandes
+    # Créer un DataFrame avec les valeurs de LOS et les dates
+    # Mutliplication asssociée
+
+    asc_LOS = pd.DataFrame({
+        'Date': ascdf['Date'],
+        'LOS': ascLOS,
+        'RMS': ascdf['RMS']
+    })
+    dsc_LOS = pd.DataFrame({
+        'Date': dscdf['Date'],
+        'LOS': dscLOS,
+        'RMS': dscdf['RMS']
+    })
+    asc_LOS['LOS'] = asc_LOS['LOS']*-4.413824938174363
+    dsc_LOS['LOS'] = dsc_LOS['LOS']*-4.413824938174363
+    
+    #Decomposition spatiale
+    new_LOS, para, perp, new_date = slope_decomp(asc_LOS, dsc_LOS, spatial_param)
+    
+    # Afficher la time series avec les barres d'erreur
+    #plot_time_series(asc_LOS, dsc_LOS)
+    plot_time_series_decomp(asc_LOS, dsc_LOS, new_LOS, para, perp, new_date, spatial_param["slope"], pixel)
+    
+def slope_decomp(asc_LOS, dsc_LOS, spatial_param):
+    
+    new_LOS, _ = interpolation_lineaire(dsc_LOS['Date'].tolist(), dsc_LOS['LOS'].tolist(), asc_LOS['Date'].tolist())
+    
+    ##test
+    #plt.plot(dsc_LOS['Date'], dsc_LOS['LOS'], 'ko', label='Données dsc')
+    #plt.plot(asc_LOS['Date'], new_LOS, 'r+', label='Données dsc interpolée')
+    #plt.plot(asc_LOS['Date'], asc_LOS['LOS'], 'bo', label='Données asc')
+    #plt.show()
+    
+    #clean 
+    new_LOS = np.array(new_LOS)
+    asc_LOS_data = np.array(asc_LOS['LOS'].tolist())
+    new_date = np.array(asc_LOS['Date'].tolist())
+
+    mask = np.isnan(new_LOS) | np.isnan(asc_LOS_data)
+    new_LOS = new_LOS[~mask]
+    asc_LOS_data = asc_LOS_data[~mask]
+    new_date = new_date[~mask]
+    
+    #invertion
+    para, perp, _, _ = invertion(asc_LOS_data, new_LOS, spatial_param)
+    
+    return new_LOS, para, perp, new_date
+
+def interpolation_lineaire(x, y, x_interpolation, error=None):
+    """
+    Calcule les valeurs y_interpolation pour chaque point dans x_interpolation
+    en utilisant l'interpolation linéaire seulement dans la plage des valeurs de x.
+    Si une valeur de x_interpolation est hors de cette plage, elle est ignorée (renvoie None).
+    """
+
+    y_interpolation = []
+    y_error=[]
+
+    for xi in x_interpolation:
+        if x[0] <= xi <= x[-1]:
+            # Interpolation linéaire avec numpy
+            yi = np.interp(xi, x, y)
+            y_interpolation.append(yi)
+            if error is None:
+                y_error.append(np.nan)
+            else:
+                yi_error = np.interp(xi, x, error)
+                y_error.append(yi_error)
+        else:
+            # Si xi est en dehors de la plage de x, on met None ou ignore
+            y_interpolation.append(np.nan)
+
+    return y_interpolation, y_error
+    
+def invertion(asc, dsc, spatial_param, error_asc=None, error_dsc=None):
+    
+    slope = spatial_param["slope"]
+    rot = spatial_param["aspect"]
+    phi_a = spatial_param["asc_H"]
+    phi_d = spatial_param["dsc_H"]
+    theta_a = spatial_param["asc_I"]
+    theta_d = spatial_param["dsc_I"]
+    
+    proj_asc = projection(slope, theta_a, phi_a, rot)
+    proj_dsc = projection(slope, theta_d, phi_d, rot)
+  
+    print(proj_asc)
+    print(proj_dsc)
+    para = []
+    perp = []
+    sig_para = []
+    sig_perp = []
+    for i in range(len(asc)):
+        data = np.array([asc[i], dsc[i]])
+        G = np.array([[proj_asc[0], proj_asc[2]], [proj_dsc[0], proj_dsc[2]]])
+        #Cd = np.diag([error_asc[i]**2, error_dsc[i]**2])# Diagonal matrix
+        #Cd[np.isnan(Cd)] = 1.
+        Cd = np.eye(len(data))
+        
+        #Coef
+        pars = np.dot(np.linalg.inv(np.dot(np.dot(G.T,np.linalg.inv(Cd)),G)),np.dot(np.dot(G.T,np.linalg.inv(Cd)),data))
+        #pars = np.dot(np.linalg.inv(G),data)
+        para.append(pars[0])
+        perp.append(pars[1])
+
+        # Error
+        sigma = np.sqrt(np.linalg.inv(np.dot(np.dot(G.T,np.linalg.inv(Cd)),G)))
+        sig_para.append(sigma[0][0])
+        sig_perp.append(sigma[1][1])
+
+    return para, perp, sig_para, sig_perp
+
+def projection(slope, theta, phi, rot):
+
+    return [
+        np.cos(slope)*np.cos(theta)*(np.cos(rot)*np.cos(phi) - np.sin(rot)*np.sin(phi)) - np.sin(slope)*np.sin(theta),
+        np.cos(theta)*(np.sin(rot)*np.cos(phi) + np.cos(rot)*np.sin(phi)),
+        np.sin(slope)*np.cos(theta)*(np.cos(rot)*np.cos(phi) - np.sin(rot)*np.sin(phi)) + np.cos(slope)*np.sin(theta)
+    ]
+
+
+def plot_time_series(asc_LOS, dsc_LOS):
+    # Convertir les dates en années décimales
+    asc_years_decimal = date2dec(asc_LOS['Date'].dt.strftime('%Y%m%d'))
+    dsc_years_decimal = date2dec(dsc_LOS['Date'].dt.strftime('%Y%m%d'))
+    
+    plt.figure(figsize=(10, 6))
+    
+    # Afficher les points avec les barres d'erreur
+    plt.errorbar(asc_years_decimal, asc_LOS['LOS'], yerr=asc_LOS['RMS'], fmt='o', color='b', capsize=5, label='Données asc')
+    plt.errorbar(dsc_years_decimal, dsc_LOS['LOS'], yerr=dsc_LOS['RMS'], fmt='o', color='r', capsize=5, label='Données dsc')
+    
+    #plt.xticks(years_decimal, years_decimal_0)
+    plt.title('Séries temporelles pour le pixel sélectionné')
+    plt.xlabel('Année (décimale)')
+    plt.ylabel('LOS mm/yr')
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    plt.legend()
+    plt.tight_layout()
+    #plt.ylim([-55, 5])
+    plt.show()
+    
+def plot_time_series_decomp(asc_LOS, dsc_LOS, new_LOS, para, perp, date, slope, pixel):
+    # Créer une figure avec 3 sous-graphes (1 ligne, 3 colonnes)
+    fig, axs = plt.subplots(2, 1, figsize=(12, 8))
+    fig.suptitle(f"décomposition du pixel {pixel[0]};{pixel[1]} ")
+    
+    # Premier sous-graphe : affichage de asc_LOS, dsc_LOS et new_LOS
+    # axs[0].plot(date, new_LOS, 'k+', label='Données dsc interpolée')
+    # axs[0].errorbar(asc_LOS['Date'], asc_LOS['LOS'], yerr=asc_LOS['RMS'], fmt='o', color='b', capsize=5, label='Données asc')
+    # axs[0].errorbar(dsc_LOS['Date'], dsc_LOS['LOS'], yerr=dsc_LOS['RMS'], fmt='o', color='r', capsize=5, label='Données dsc')
+    # axs[0].set_title('Séries temporelles pour le pixel sélectionné')
+    # axs[0].set_xlabel('Année')
+    # axs[0].set_ylabel('LOS mm/yr')
+    # axs[0].grid(True)
+    # axs[0].legend()
+
+    # Deuxième sous-graphe : affichage de para
+    axs[1].plot(date, para, 'ko', label='Parallèle, déplacement cumulé')
+    axs[1].set_title('Composante parallèle')
+    axs[1].set_xlabel('Année')
+    axs[1].set_ylabel('mm')
+    axs[1].tick_params(axis='y', labelcolor='k')
+    
+    sigma = 4
+    smooth_para = gaussian_filter1d(para, sigma=sigma)
+    axs[1].plot(date, smooth_para, 'b-', label=f'Parallèle, déplacement cumulé smooth (sigma={sigma})')
+    ax2 = axs[1].twinx()
+    ax2.plot(date, np.gradient(smooth_para, date), 'r--', label="Vitesse")
+    ax2.set_ylabel("Vitesse instantanée", color='r')
+    ax2.tick_params(axis='y', labelcolor='r')
+    axs[1].grid(True)
+    axs[1].legend()
+    #ax2.legend()
+    
+    
+    smooth_perp = gaussian_filter1d(perp, sigma=sigma)
+    # Troisième sous-graphe : affichage de perp
+    axs[0].plot(date, perp, 'ko', label='Perpendiculaire, déplacement cumulé')
+    axs[0].plot(date, smooth_perp, 'b-', label=f'Perpendiculaire, déplacement cumulé smooth (sigma={sigma})')
+    axs[0].set_title('Composante perpendiculaire')
+    axs[0].set_xlabel('Année')
+    axs[0].set_ylabel('mm')
+    axs[0].grid(True)
+    axs[0].legend()
+    
+    
+    
+    
+    # R = np.array([[np.cos(-slope), -np.sin(-slope)],
+    #           [np.sin(-slope), np.cos(-slope)]])
+    # coords = np.vstack((para, perp))
+    # new_coords = R @ coords
+    # para_rot, perp_rot = new_coords
+    
+    # print(perp_rot[0])
+    # x = np.linspace(min(para_rot), max(para_rot), 100)
+    # b= 0
+    # y = -np.tan(slope) *x + b
+    # axs[0].plot(x, y, label=f'y = {-np.tan(slope):.1f}x + {b:.1f}, angle = {np.degrees(slope):.1f}', color='b')
+    # axs[0].plot(para_rot, perp_rot, 'ko', label='')
+    # axs[0].set_title('')
+    # axs[0].set_xlabel('parallèle cumulée (mm)')
+    # axs[0].set_ylabel('perpendiculaire cumulée (mm)')
+    # axs[0].grid(True)
+    # axs[0].legend()
+    
+
+    # Ajuster l'espacement entre les sous-graphes pour une meilleure visibilité
+    plt.tight_layout()
+    plt.show()
+    
+    
+
+# Configuration des chemins
+asc_raster_path = "/Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/Analyse_JourneeFlatsim/Data/Raster/A085_sud/A085_sud_CNES_DTs_geo_8rlks_HP70.tiff"
+dsc_raster_path = "/Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/Analyse_JourneeFlatsim/Data/Raster/D019_sud/DO19_sud_CNES_DTs_geo_8rlks_HP70.tiff"
+asc_RMSdate_path = "/Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/Analyse_JourneeFlatsim/Data/Raster/A085_sud/RMSdate.txt"
+dsc_RMSdate_path = "/Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/Analyse_JourneeFlatsim/Data/Raster/D019_sud/RMSdate.txt"
+
+# Données spatiales
+chemin = "/Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/Analyse_JourneeFlatsim/Data/Raster/los2comp/TS_decomp_data/"
+asc_H = chemin + "A085_Heading_crop_res.tif"
+dsc_H = chemin + "D019_Heading_crop_res.tif"
+asc_I = chemin + "A085_Incidence_crop_res.tif"
+dsc_I = chemin + "D019_Incidence_crop_res.tif"
+slope = chemin + "slope.tif"
+aspect = chemin + "aspect.tif"
+
+data_type = 'FLATSIM'
+
+# Obtenir le canvas QGIS
+canvas = iface.mapCanvas()
+
+# Initialiser et activer l'outil
+point_tool = PointTool(canvas, asc_raster_path, dsc_raster_path, data_type, asc_RMSdate_path, dsc_RMSdate_path, asc_H, dsc_H, asc_I, dsc_I, aspect, slope)
+canvas.setMapTool(point_tool)
+
