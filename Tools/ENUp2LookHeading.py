@@ -69,8 +69,8 @@ def calculate_theta_phi(input_raster, output_theta, output_phi):
     r_t = band_e/band_up
     r_p = band_e/band_n
 
-    theta = np.degrees(np.arctan(r_t))
-    phi = np.degrees(np.arctan(r_p))
+    theta = np.abs(np.degrees(np.arctan(r_t)))
+    phi =  np.degrees(np.arctan(r_p))
 
 
     # Obtenir les métadonnées du raster d'entrée
@@ -96,5 +96,5 @@ def create_output_raster(output_path, data, cols, rows, geotransform, projection
     out_band.FlushCache()
     out_raster = None
 
-calculate_theta_phi(arguments["--CosENUfile"], arguments["--outpath"] +'/' + arguments["--name"] + "_Look.tif", arguments["--outpath"] +'/' + arguments["--name"] + "_Head.tif")
+calculate_theta_phi(arguments["--CosENUfile"], arguments["--outpath"] +'/' + arguments["--name"] + "_Incidence.tif", arguments["--outpath"] +'/' + arguments["--name"] + "_Heading.tif")
 
