@@ -11,8 +11,8 @@ from datetime import datetime
 from matplotlib.colors import LinearSegmentedColormap
 
 # Chemin du fichier cube
-cube_file = '/data2/scratch/A129_V3/CNES_DTs_geo_8rlks.tiff'
-dates, idates,rms=np.loadtxt('/data2/scratch/A129_V3/list_images.txt', comments='#', usecols=(1,3,4), unpack=True, dtype='f,f,f')
+cube_file = '/data2/permafrost/WestTibet/projet_jFLATSIM/D019_sud_8km/DO19_sud_CNES_DTs_geo_8rlks_HP70.tiff'
+dates, idates,rms=np.loadtxt('/data2/permafrost/WestTibet/projet_jFLATSIM/D019_sud_8km/list_images.txt', comments='#', usecols=(1,3,4), unpack=True, dtype='f,f,f')
 formatted_dates = idates
 #formatted_dates = [datetime.strptime(str(int(date)), "%Y%m%d").strftime("%Y/%m/%d") for date in dates]
 
@@ -24,11 +24,11 @@ y_size = ds.RasterYSize   # Hauteur du cube (lignes)
 
 # Définition de la zone (col, row) à analyser
 # Par exemple, une zone de 10x10 pixels à partir de (50, 50)
-zone_start_col = 2300
-zone_start_row = 3540
-zone_width = 3
-zone_height = 400
-theta = np.radians(90)
+zone_start_col = 2100
+zone_start_row = 0
+zone_width = 100
+zone_height = 5200
+theta = np.radians(45)
 
 s = [math.sin(theta),- math.cos(theta), 0]
 n = [math.cos(theta), math.sin(theta), 0]

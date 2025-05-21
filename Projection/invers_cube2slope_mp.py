@@ -435,6 +435,9 @@ def process_chunk(slope, rot, theta, phi, data, dates, master):
 
     U0 = np.full((len(slope), len(data[master])), np.nan)
     U2 = np.full((len(slope), len(data[master])), np.nan)
+    print(U0.shape)
+    print(len(slope))
+    print(len(data[master]))
     
     for j in range(len(slope)):
         if np.all(np.isnan(data[master][:, j])): # Explications
@@ -557,8 +560,18 @@ with mp.Pool(processes=num_processes) as pool:
                 index
             ))
 
+        print(
+            f"slope_block[i].shape = {slope_block[i].shape if isinstance(slope_block[i], np.ndarray) else 'Not a NumPy array'}")
+        print(
+            f"rot_block[i].shape = {rot_block[i].shape if isinstance(rot_block[i], np.ndarray) else 'Not a NumPy array'}")
+        print(f"theta_input shape = {np.array(theta_input).shape}")
+        print(f"phi_input shape = {np.array(phi_input).shape}")
+        print(f"ts_input shape = {len(ts_input)}, {len(ts_input[0])}, {len(ts_input[0][0])}")
+        print(f"dates shape = {len(dates)}, {len(dates[0])} ")
+
+
         results = pool.starmap(process_chunk, parameters)
-       
+
         U0[line:end_block_line, :, :] = np.concatenate([res[0] for res in results], axis=0).reshape((block_size_local, block_width, nimg_final)) 
         U2[line:end_block_line, :, :] = np.concatenate([res[1] for res in results], axis=0).reshape((block_size_local, block_width, nimg_final))
 
@@ -592,8 +605,18 @@ else:
     uslope_filename = 'depl_cumule_uslope_{}'.format(ext)
     uz_filename = 'depl_cumule_uz_{}'.format(ext)
 
-geotransform = cubes[0].GetGeoTransform()
-projection = cubes[0].GetProjection()
+if(crop):
+    ds_ref = gdal.OpenEx(insar[0][2], allowed_drivers=['GTiff'])
+    translated_raster = "ref_file.tif"
+    gdal.Translate(translated_raster, ds_ref, srcWin=[start_col, start_line, block_width, block_height])
+
+    ds_ref = gdal.OpenEx(translated_raster, allowed_drivers=['GTiff'])
+    geotransform = ds_ref.GetGeoTransform()
+    projection = ds_ref.GetProjection()
+
+else:
+    geotransform = cubes[0].GetGeoTransform()
+    projection = cubes[0].GetProjection()
 
 def save_cube_tif(dest_path, out_filename, maps, geotransform=None, projection=None):
     nrow, ncol, nimg = maps.shape

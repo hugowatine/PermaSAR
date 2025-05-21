@@ -10,17 +10,18 @@ invers_disp_pixel.py
 -------------
 Temporal decomposition of the time series delays of selected pixels (used depl_cumule (BIP format) and images_retenues, output of invers_pixel). 
 
-Usage: plot_ts__pixel.py --cols=<values> --ligns=<values> [--cube=<path>] [--list_images=<path>] [--lectfile=<path>] [--aps=<path>] [--vmax_vmin=<values>] [<iref>] [<jref>]
+Usage: plot_ts__pixel.py --cols=<values> --ligns=<values> [--scale=<value>] [--cube=<path>] [--list_images=<path>] [--lectfile=<path>] [--aps=<path>] [--vmax_vmin=<values>] [<iref>] [<jref>]
 
 -h --help               Show this screen
---ncols VALUE           Pixel column numbers (eg. 200,400,450)
---nligns VALUE          Pixel lines numbers  (eg. 1200,1200,3000)
+--cols VALUE           Pixel column numbers (eg. 200,400,450)
+--ligns VALUE          Pixel lines numbers  (eg. 1200,1200,3000)
 --cube PATH             Path to displacement file [default: depl_cumul_flat]
 --list_images PATH      Path to list images file made of 5 columns containing for each images 1) number 2) Doppler freq (not read) 3) date in YYYYMMDD format 4) numerical date 5) perpendicular baseline [default: images_retenues]
 --aps PATH              Path to the APS file giving the error associated to each dates [default: No weigthing]
 --vmax_vmin             Set the max,min values of the TS for all pixels
-iref                  colum numbers of the reference pixel [default: None] 
-jref                  lign number of the reference pixel [default: None]
+--scale               Scaling value between input data and desired output [default: 1]
+cref                  colum numbers of the reference pixel [default: None] 
+lref                  lign number of the reference pixel [default: None]
 """
 
 from osgeo import gdal
@@ -61,6 +62,10 @@ if arguments["<jref>"] ==  None:
     jref = None
 else:
     jref = int(arguments["<jref>"])
+if arguments["--scale"] ==  None:
+    scale = 1
+else :
+    scale = float(arguments["--scale"])
 
 ## Lecture des lignes et colonnes
 ipix = list(map(int,arguments["--cols"].replace(',',' ').split()))
@@ -75,8 +80,11 @@ Npix = len(ipix)
 print(f"Colonne : {ipix}, Ligne : {jpix}")
 
 ## Lecture du fichier liste_image
-idates,rms=np.loadtxt(listim, comments='#', usecols=(3,4), unpack=True, dtype='f,f')
+idates=np.loadtxt(listim, comments='#', usecols=(3), unpack=True, dtype='f')
+rms=np.loadtxt(apsf, comments='#', usecols=(0), unpack=True, dtype='f')
 formatted_dates = idates
+print(idates)
+print(rms)
 #formatted_dates = [datetime.strptime(str(date), "%Y%m%d").strftime("%Y/%m/%d") for date in idates]
 
 ds = gdal.Open(cubef)
@@ -105,7 +113,7 @@ for i in range(Npix):
         band = ds.GetRasterBand(band_idx)
         data = band.ReadRaster(col, row, 1, 1, buf_type=gdal.GDT_Float32)
         value = struct.unpack('f', data)[0]  # Décompresser les données
-        ts_values.append(value)
+        ts_values.append(value*scale)
 
     series_temporales.append(ts_values)
 
@@ -123,7 +131,12 @@ gs = GridSpec(Npix, 3, width_ratios=[1, 1, 2])
 
 for i in range(Npix):
     ax = fig.add_subplot(gs[i, :2])
-    ax.errorbar(formatted_dates, np.array(series_temporales[i])-np.array(ref), yerr=rms, fmt='o', alpha=0.5, label=f"Pixel {str(i+1)}  ({ipix[i]}, {jpix[i]})")
+    print('formatted_dates', formatted_dates)
+    print(len(formatted_dates))
+    print('#')
+    print('y ', np.array(series_temporales[i])-np.array(ref))
+    print(len(np.array(series_temporales[i])-np.array(ref)))
+    ax.errorbar(formatted_dates, np.array(series_temporales[i])-np.array(ref), yerr=rms*np.abs(scale), fmt='o', alpha=0.5, label=f"Pixel {str(i+1)}  ({ipix[i]}, {jpix[i]})")
     ax.set_ylabel(f'Cumulative displacement (mm)')
     ax.set_xlabel('Time (Year/month/day)')
     ax.legend(loc='upper left')
