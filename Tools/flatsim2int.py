@@ -44,24 +44,6 @@ def open_raster(raster_path):
 
     return data, Xsize, Ysize, geotrans, proj
 
-def write_rsc(filename, Xsize, Ysize, geotrans, proj):
-    rsc_path = filename + '.rsc'
-    dx = abs(geotrans[1])
-    dy = abs(geotrans[5])
-    ulx = geotrans[0]
-    uly = geotrans[3]
-    
-    with open(rsc_path, 'w') as f:
-        f.write(f"WIDTH {Xsize}\n")
-        f.write(f"FILE_LENGTH {Ysize}\n")
-        f.write(f"X_FIRST {ulx:.6f}\n")
-        f.write(f"Y_FIRST {uly:.6f}\n")
-        f.write(f"X_STEP {dx:.6f}\n")
-        f.write(f"Y_STEP {-dy:.6f}\n")  # Negative if north-up
-        f.write("Z_OFFSET 0.0\n")
-        f.write("Z_SCALE 1.0\n")
-        f.write("PROJECTION UNKNOWN\n")
-
 # read arguments
 arguments = docopt.docopt(__doc__)
 
