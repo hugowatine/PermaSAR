@@ -7,13 +7,13 @@
 """\
 flatsim2int.py
 -------------
-create .int and .rsc files from flatsim data.
+create .unw and .rsc files from flatsim data.
 
-Usage: flatsim2int.py --ifg=<path> --coh=<path>\
+Usage: flatsim2unw.py --ifg=<path> --coh=<path>\
 
 Options:
 -h --help           Show this screen.
---ifg PATH          path of InW .tif file with, in band (1), the wrapped phase
+--ifg PATH          path of InU .tif file with, in band (1), the unwrapped phase
 --coh PATH          path of Coh .tif file with, in band (1), the spatial coherence. Need to be in the same geometry and resolution than InW
 """
 print()
@@ -58,25 +58,31 @@ if Xifg != Xcoh or Yifg != Ycoh:
     print('ERROR : not the same size')
     sys.exit
 
-complex_data = coh * np.exp(1j*phi)
+coh[phi == 0] = 0
 
 basename = os.path.splitext(os.path.basename(ifg_path))[0]
 match = re.search(r'\d{8}_\d{8}', basename)
 if match:
     new_dates = match.group().replace('_', '-')
     basename_modified = basename.replace(match.group(), new_dates, 1)
-output_path = os.path.join(os.path.dirname(ifg_path), basename_modified + ".int")
+output_path = os.path.join(os.path.dirname(ifg_path), basename_modified + ".unw")
 
 drv = gdal.GetDriverByName("roi_pac")
-dst_ds = drv.Create(output_path, Xifg, Yifg, 1, gdal.GDT_CFloat32)
+dst_ds = drv.Create(output_path, Xifg, Yifg, 2, gdal.GDT_Float32)
 
-band = dst_ds.GetRasterBand(1)
-band.WriteArray(complex_data.astype(np.complex64))
+band1 = dst_ds.GetRasterBand(1)
+band2 = dst_ds.GetRasterBand(2)
+
+band1.WriteArray(coh)
+band2.WriteArray(phi)
+
 dst_ds.SetGeoTransform(geotrans)
 dst_ds.SetProjection(proj)
 
-band.FlushCache()
-del band
+band1.FlushCache()
+band2.FlushCache()
+del band1
+del band2
 del dst_ds
 
 print(f".int saved: {output_path}")

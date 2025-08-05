@@ -5,17 +5,17 @@
 ############################################
 
 """\
-flatsim2int.py
+flatsim2cor.py
 -------------
-create .int and .rsc files from flatsim data.
+create .cor and .rsc files from flatsim data.
 
-Usage: flatsim2int.py --ifg=<path> --coh=<path>\
+Usage: flatsim2int.py --coh=<path>\
 
 Options:
 -h --help           Show this screen.
---ifg PATH          path of InW .tif file with, in band (1), the wrapped phase
 --coh PATH          path of Coh .tif file with, in band (1), the spatial coherence. Need to be in the same geometry and resolution than InW
 """
+
 print()
 print()
 print('Author: Hugo WATINE')
@@ -24,9 +24,6 @@ print()
 
 import numpy as np
 from osgeo import gdal, osr, gdalconst
-import sys
-import re
-import os
 
 gdal.UseExceptions()
 
@@ -34,6 +31,10 @@ try:
     from nsbas import docopt
 except:
     import docopt
+
+import sys
+import re
+import os
 
 def open_raster(raster_path):
     ds = gdal.Open(raster_path, gdalconst.GA_ReadOnly)
@@ -45,41 +46,42 @@ def open_raster(raster_path):
 
     return data, Xsize, Ysize, geotrans, proj
 
+
 # read arguments
 arguments = docopt.docopt(__doc__)
 
-ifg_path = arguments["--ifg"]
 coh_path = arguments["--coh"]
+coh, Xifg, Yifg, geotrans, proj = open_raster(coh_path)
 
-phi, Xifg, Yifg, geotrans, proj = open_raster(ifg_path)
-coh, Xcoh, Ycoh, _, _ = open_raster(coh_path)
-
-if Xifg != Xcoh or Yifg != Ycoh:
-    print('ERROR : not the same size')
-    sys.exit
-
-complex_data = coh * np.exp(1j*phi)
-
-basename = os.path.splitext(os.path.basename(ifg_path))[0]
+basename = os.path.splitext(os.path.basename(coh_path))[0]
+match = re.search(r'\d{8}_\d{8}.*', basename)
+if match:
+    basename = match.group()
 match = re.search(r'\d{8}_\d{8}', basename)
 if match:
     new_dates = match.group().replace('_', '-')
     basename_modified = basename.replace(match.group(), new_dates, 1)
-output_path = os.path.join(os.path.dirname(ifg_path), basename_modified + ".int")
+output_path = os.path.join(os.path.dirname(coh_path), basename_modified + ".cor")
 
 drv = gdal.GetDriverByName("roi_pac")
-dst_ds = drv.Create(output_path, Xifg, Yifg, 1, gdal.GDT_CFloat32)
+dst_ds = drv.Create(output_path, Xifg, Yifg, 2, gdal.GDT_Float32)
 
-band = dst_ds.GetRasterBand(1)
-band.WriteArray(complex_data.astype(np.complex64))
+band1 = dst_ds.GetRasterBand(1)
+band2 = dst_ds.GetRasterBand(2)
+
+band1.WriteArray(coh)
+band2.WriteArray(coh)
+
 dst_ds.SetGeoTransform(geotrans)
 dst_ds.SetProjection(proj)
 
-band.FlushCache()
-del band
+band1.FlushCache()
+band2.FlushCache()
+del band1
+del band2
 del dst_ds
 
-print(f".int saved: {output_path}")
+print(f".cor saved: {output_path}")
 
 ## Modification of the .rsc file
 
@@ -91,17 +93,4 @@ with open(output_path + '.rsc', 'w') as f:
     f.writelines(lines)
 
 print(f".rsc saved: {output_path+'.rsc'}")
-
-
-
-
-
-
-
-
-
-
-
-
-
 
