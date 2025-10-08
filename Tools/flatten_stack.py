@@ -33,7 +33,7 @@ import docopt
 import sys
 import os
 from scipy.optimize import minimize
-
+gdal.UseExceptions()
 
 def open_gdal(file, band=1, supp_ndv=None, complex=False):
     """
@@ -45,7 +45,7 @@ def open_gdal(file, band=1, supp_ndv=None, complex=False):
         raise FileNotFoundError('File does not exists: {}'.format(file))
     ds = gdal.Open(file)
     # ds = gdal.OpenEx(file, allowed_drivers = ["ROI_PAC"])
-    print('ds', ds)
+    #print('ds', ds)
     print('dims', ds.RasterXSize, ds.RasterYSize, ds.RasterCount)
     band = ds.GetRasterBand(band)
     ndv = band.GetNoDataValue()
@@ -158,11 +158,13 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
     cyclmax = 2
     npascycl = 30
     #Dstack = 10
-    ismax = int(cyclmax * npascycl)
+    ismax = 2
+    #ismax = int(cyclmax * npascycl)
     #fac = 2 * np.pi * cyclmax / (Dstack * ismax)
     #amax = -np.inf
     #best_slope = 0
     list_coeff = np.full(shape=(model.shape[0], model.shape[1]), fill_value=np.nan)
+    list_coh = np.full(shape=(model.shape[0], model.shape[1]), fill_value=np.nan)
 
 
     print(model.shape)
@@ -185,12 +187,22 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
 
             #res = minimize(lambda c: -np.abs(np.nanmean(np.exp(1j*phi_filt_region) * np.exp(-1j*(np.mod(c*model_region + np.pi, 2*np.pi) - np.pi)))),
             #   x0=0.0, bounds=[(-ismax, ismax)])
-            res = minimize(lambda c: 1/(np.abs(np.nanmean(np.exp(1j*phi_filt_region) * np.exp(-1j*(c*model_region))))),
-               x0=0.0, bounds=[(-ismax, ismax)])
-            coeff = res.x[0]
-            print(coeff)
-            list_coeff[i,j] = coeff
+            
+            def misfit(params, phi_filt_region, model_region):
+                c = params  
+                coh = np.nanmean(np.exp(1j * phi_filt_region) *
+                     np.exp(-1j * (c * model_region )))
+                return 1./np.abs(coh)
 
+            res = minimize(misfit, x0=[0.0], args=(phi_filt_region, model_region), 
+                          bounds=[(-ismax, ismax) ] )
+            coeff = res.x[0]
+            coh = np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j * (coeff * model_region ))))
+            print(coeff, coh)
+            threshold_coh = 0.65
+            if coh > threshold_coh:
+                list_coeff[i,j] = coeff
+                list_coh[i,j] = coh 
 
             #res = minimize(lambda params: -np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j*(np.mod(params[0]*model_region + params[1] + np.pi, 2*np.pi) - np.pi)))),
             #    x0=[0.0, 0.0],  bounds=[(-ismax, ismax), (-np.pi, np.pi)])
@@ -199,10 +211,10 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
             #coeff, offset = res.x
             #print(coeff, offset)
 
-
-            if True:
+            Plot = False
+            if Plot == True:
                 plt.figure(figsize=(5, 3))
-                plt.scatter(np.angle(np.exp(1j*model_region)), np.angle(np.exp(1j*phi_filt_region)), s=10, c='k', alpha=0.6, label="Data")
+                plt.scatter(np.angle(np.exp(1j*model_region)), np.angle(np.exp(1j*phi_filt_region)), s=2., c='k', alpha=0.6, label="Data")
                 #plt.scatter(np.angle(np.exp(1j*phi_filt_region)) - np.angle(np.exp(1j*coeff*model_region)), np.angle(np.exp(1j*phi_filt_region)), s=10, c='r', alpha=0.6, label="Data")
                 x_fit = np.linspace(np.nanmin(np.angle(np.exp(1j*model_region))), np.nanmax(np.angle(np.exp(1j*model_region))), 100)
                 y_fit = np.angle(np.exp(1j*coeff*x_fit))
@@ -212,12 +224,11 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
 
                 y_fit2 = np.angle(np.exp(1j*coeff*model_region))
                 cst =  np.nanmean(y - y_fit2)
-                print(cst)
 
                 #y_fit = np.mod(coeff*x_fit + offset + np.pi, 2*np.pi) - np.pi
                 #plt.plot(x_fit, y_fit, 'r-', lw=2, label=f"Fit: c={coeff:.3f}, off={offset:.2f} rad")
                 #plt.plot(x, y_fit2, 'r-', lw=2, label=f"Fit: coeff={list_coeff[i,j]:.3f}")
-                plt.plot(x_fit, y_fit + cst, 'r-', lw=2, label=f"Fit: coeff={list_coeff[i,j]:.3f}")
+                plt.plot(x_fit, y_fit + cst, 'r-', lw=2, label=f"Fit: coeff={list_coeff[i,j]:.3f}, coh={list_coh[i,j]:.3f}")
                 #plt.xlim(-4, 4)
                 #plt.ylim(-4, 4)
                 plt.xlabel("Model")
@@ -228,15 +239,23 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
                 plt.tight_layout()
                 plt.show()
     
-    print(np.nanmedian(list_coeff))
     print("all")
-    
-    plt.imshow(list_coeff, cmap='RdBu_r')
-    plt.colorbar()
-    plt.show()
-    return np.median(list_coeff)
-    pass
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 7))
+    im1 = ax1.imshow(list_coeff, cmap='RdBu_r',
+                 vmax=ismax,
+                 vmin=-ismax)
+    ax1.set_title('Coefficients')
+    plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+    im2 = ax2.imshow(list_coh, cmap='RdBu_r')
+    ax2.set_title('Coherence')
+    plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
 
+    plt.tight_layout()
+    plt.show()
+    med = np.nanmedian(list_coeff)
+    print(f'Median: {med:.3f}')
+    return med
+    pass
 
 #@jit
 def minimize_complex_product(x, *args):
@@ -282,13 +301,12 @@ def reg_pad(array, block_nb_x):
     return blocks
 
 
-@jit
-def remove_model(phase, model, coeff):
-    """
-    Remove a model from wrapped values with a given proportionnality coefficient
-    """
-    return phase - np.mod(coeff* model, 2 * np.pi)
 
+@jit(nopython=True)
+def remove_model(phase, model, coeff):
+    corrected = phase - coeff * model
+    corrected = np.mod(corrected + np.pi, 2 * np.pi) - np.pi
+    return corrected
 
 @jit
 def add_model(amplitude, model, coeff):
@@ -348,7 +366,7 @@ if __name__ == '__main__':
         
         coeff = float(arguments["<coeff>"])
         outfile = arguments["--outfile"]
-        phase_minus_model = remove_model(phase, model, coeff)
+        phase_minus_model = remove_model(phase.astype(np.float64), modelastype(np.float64), float(coeff))
         save_gdal(outfile, phase, phase_minus_model, band=2)
     else:
         # Remove a pattern from a wrapped signal, as in flatten_stack.f from NSBAS
