@@ -132,6 +132,7 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
     amp_filt[index] = np.nan
     phi_filt[index] = np.nan
     model[index] = np.nan
+    model_save = np.copy(model)
 
     # fig, axes = plt.subplots(1, 3, figsize=(15, 5), constrained_layout=True)
     # im0 = axes[0].imshow(phi_filt, cmap='rainbow')
@@ -158,7 +159,7 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
     cyclmax = 2
     npascycl = 30
     #Dstack = 10
-    ismax = 2
+    ismax = 3
     #ismax = int(cyclmax * npascycl)
     #fac = 2 * np.pi * cyclmax / (Dstack * ismax)
     #amax = -np.inf
@@ -198,11 +199,11 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
                           bounds=[(-ismax, ismax) ] )
             coeff = res.x[0]
             coh = np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j * (coeff * model_region ))))
+            list_coh[i,j] = coh 
             print(coeff, coh)
             threshold_coh = 0.65
             if coh > threshold_coh:
                 list_coeff[i,j] = coeff
-                list_coh[i,j] = coh 
 
             #res = minimize(lambda params: -np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j*(np.mod(params[0]*model_region + params[1] + np.pi, 2*np.pi) - np.pi)))),
             #    x0=[0.0, 0.0],  bounds=[(-ismax, ismax), (-np.pi, np.pi)])
@@ -239,21 +240,27 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
                 plt.tight_layout()
                 plt.show()
     
-    print("all")
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 7))
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 7))
     im1 = ax1.imshow(list_coeff, cmap='RdBu_r',
                  vmax=ismax,
                  vmin=-ismax)
     ax1.set_title('Coefficients')
     plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
+    
     im2 = ax2.imshow(list_coh, cmap='RdBu_r')
     ax2.set_title('Coherence')
     plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
 
+    im3 = ax3.imshow(model_save, cmap='RdBu_r')
+    ax3.set_title('Model')
+    plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
+    
     plt.tight_layout()
-    plt.show()
     med = np.nanmedian(list_coeff)
     print(f'Median: {med:.3f}')
+    
+    plt.show()
+    #print("all")
     return med
     pass
 
