@@ -105,6 +105,31 @@ def former_flatten_stack(phase, phase_filt, model, **kwargs):
     """
     Remove a pattern from a wrapped signal, as in flatten_stack.f from NSBAS
     """
+
+    # nregs = [1, 5, 10, 20, 40, 80, 160, 200]
+    # thresh_model = [-0.6, -0.3, 0, 0.3, 0.4, 0.6]
+    # #nregs = [1, 200]
+    # #thresh_model = [0, 0.6]
+    # results_mediane = {t: [] for t in thresh_model}
+    # for nreg in nregs:
+    #     kwargs["nreg"] = nreg
+    #     for thresh in thresh_model:
+    #         kwargs["thresh_model"] = thresh
+    #         median = estimate_coeff(phase_filt, model, **kwargs)
+    #         results_mediane[thresh].append(median)
+    # colors = plt.cm.viridis(np.linspace(0, 1, len(thresh_model)))
+    # for color, thresh in zip(colors, thresh_model):
+    #     plt.plot(nregs, results_mediane[thresh], '-o', color=color,
+    #             label=f'médiane (thresh={thresh})', linewidth=2)
+        
+    # plt.xlabel('nreg', fontsize=12)
+    # plt.ylabel('Coefficient', fontsize=12)
+    # plt.title('Évolution des coefficients selon nreg et thresh_model', fontsize=13)
+    # plt.grid(alpha=0.3)
+    # plt.legend(frameon=False)
+    # plt.tight_layout()
+    # plt.show()
+
     coeff = estimate_coeff(phase_filt, model, **kwargs)
     nomodel_phifilt = remove_model(phase_filt[1], model, coeff)
     nomodel_phi = remove_model(phase[1], model, coeff)
@@ -137,6 +162,9 @@ def former_flatten_stack(phase, phase_filt, model, **kwargs):
     save_gdal(kwargs['outfile'], complex_nomodel_phifilt, template=arguments["<phase_filt>"])
     save_gdal(kwargs['outfile'], complex_nomodel_phi, template=arguments["<phase>"])
 
+    with open('coeff_model.stack', 'w') as f:
+        f.write(f"{coeff:.6f}\n")
+
 def estimate_coeff(phase_filt, model, **kwargs) -> float:
     """
     Estimate the proportionnality coefficient between the model and the wrapped phase values
@@ -164,6 +192,7 @@ def estimate_coeff(phase_filt, model, **kwargs) -> float:
         amp_filt = np.array([[amp_filt]])
         phi_filt = np.array([[phi_filt]])
         model_split = np.array([[model_copy]])
+        kwargs['thresh_cohreg'] = 0.           
 
     # Initialisation
     cyclmax = kwargs['cyclmax']
@@ -266,7 +295,7 @@ def reg_pad(array, block_nb_x):
     pad_array = np.pad(array, ((0, pad_y), (0, pad_x)), constant_values=np.nan)
     # Cut the different blocks into different sub-arrays
     y_blocks = np.array(np.array_split(pad_array, nby, axis=0))
-    blocks = np.array([np.array_split(b, nreg, axis=1) for b in y_blocks])
+    blocks = np.array([np.array_split(b, block_nb_x, axis=1) for b in y_blocks])
     
     return blocks
 
@@ -291,12 +320,11 @@ def weighted_median(values, weights):
 
     return values[cumulative_weight >= cumulative_weight[-1] / 2.0][0]
 
-@jit
 def add_model(phase, model, coeff):
     """
     Add a model to values given a proportionnality coefficient
     """
-    return np.angle(np.exp(1j*phase) * np.exp(+1j*(coeff*model)))
+    return (phase + coeff*model)
 
 
 def arg2value(value, conversion=None, default=None):
@@ -336,14 +364,14 @@ if __name__ == '__main__':
         print(coeff)
     elif arguments["add"]:
         # Add the model to an unwrapped file
-        unwrapped, unwXsize, unwYsize = open_gdal(arguments["<unwrapped>"], complex=True)
+        unwrapped, unwXsize, unwYsize = open_gdal(arguments["<unwrapped>"], band=2)
         model, mXsize, mYsize = open_gdal(arguments["<model>"])
         if not (unwXsize == mXsize and unwYsize == mYsize):
             sys.exit("Error: input rasters (unw, model) do not have the same dimensions.")
-        coeff = float(arguments["<coeff>"])
+        coeff = float(arguments["--coeff"])
         outfile = arguments["--outfile"]
         unw_plus_model = add_model(unwrapped, model, coeff)
-        save_gdal(outfile, unwrapped, unw_plus_model)
+        save_gdal(outfile, unw_plus_model, template=arguments["<unwrapped>"], band=2)
     elif arguments["remove"]:
         # Remove the model from wrapped signal
         phase, pXsize, pYsize = open_gdal(arguments["<phase>"], band=1, complex=True)
