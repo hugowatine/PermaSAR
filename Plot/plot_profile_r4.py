@@ -60,8 +60,44 @@ from matplotlib import pyplot as plt
 import matplotlib.cm as cm
 import matplotlib as mpl
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from osgeo import gdal
+import os
 # docopt (command line parser)
 import docopt
+
+def open_gdal(file, band=1, supp_ndv=None, complex=False):
+    """
+    Use GDAL to open band as real value
+    """
+    print('-----')
+    print(file)
+    if not os.path.isfile(file):
+        raise FileNotFoundError('File does not exists: {}'.format(file))
+    ds = gdal.Open(file)
+
+    print('dims', ds.RasterXSize, ds.RasterYSize, ds.RasterCount)
+    band = ds.GetRasterBand(band)
+    ndv = band.GetNoDataValue()
+    data = band.ReadAsArray()
+    Xsize = ds.RasterXSize
+    Ysize = ds.RasterYSize
+    if complex:
+        amp = np.absolute(data)
+        phi = np.angle(data)
+        data = [amp, phi]
+        ndv = 0.0
+        if ndv is not None and ndv != np.nan:
+            amp[amp==ndv] = np.nan
+            phi[phi==ndv] = np.nan
+        if supp_ndv is not None and supp_ndv != np.nan:
+            amp[amp==supp_ndv] = np.nan
+            phi[phi==supp_ndv] = np.nan
+    else:
+        if ndv is not None and ndv != np.nan:
+            data[data==ndv] = np.nan
+        if supp_ndv is not None and supp_ndv != np.nan:
+            data[data==supp_ndv] = np.nan
+    return data, Xsize, Ysize
 
 # read arguments
 arguments = docopt.docopt(__doc__)
@@ -97,8 +133,8 @@ l = int(arguments["<l>"])
 infile = arguments["--infile"]
 
 # Read number of col, lines from lect.in
-lectfile = arguments["--lectfile"]
-ncol, nlign = map(int, open(lectfile).readline().split(None, 2)[0:2])
+#lectfile = arguments["--lectfile"]
+#ncol, nlign = map(int, open(lectfile).readline().split(None, 2)[0:2])
 
 # fault azimuth
 str=(float(arguments["--strike"])*math.pi)/180
@@ -106,7 +142,10 @@ s=[math.sin(str),math.cos(str),0]
 n=[math.cos(str),-math.sin(str),0]
 
 # Load data and convert data
-los = np.fromfile(arguments["--infile"],np.float32)*rad2mm
+#los = np.fromfile(arguments["--infile"],np.float32)*rad2mm
+los, ncol, nlign = open_gdal(arguments["--infile"], band=1, complex=True)
+los = los[1]*rad2mm
+
 # clean los
 kk = np.flatnonzero(np.logical_or(los==0, los==9999))
 #kk = np.flatnonzero(los>9990)

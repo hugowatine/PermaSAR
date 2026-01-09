@@ -5,16 +5,15 @@
 ############################################
 
 """\
-flatsim2int.py
+unw_nodata0.py
 -------------
-create .unw and .rsc files from flatsim data.
+Change phase value to 0. por pixel with 0. coherence 
 
-Usage: flatsim2unw.py --ifg=<path> --coh=<path>\
+Usage: unw_nodata0.py --unw=<path> \
 
 Options:
 -h --help           Show this screen.
---ifg PATH          path of InU .tif file with, in band (1), the unwrapped phase
---coh PATH          path of Coh .tif file with, in band (1), the spatial coherence. Need to be in the same geometry and resolution than InW
+--unw PATH          path of .unw file with.
 """
 print()
 print()
@@ -35,39 +34,34 @@ try:
 except:
     import docopt
 
-def open_raster(raster_path):
-    ds = gdal.Open(raster_path, gdalconst.GA_ReadOnly)
-    data = ds.GetRasterBand(1).ReadAsArray()
+def open_raster(raster_path, band_idx=1):
+    ds = gdal.Open(raster_path, gdal.GA_ReadOnly)
+    if ds is None:
+        raise RuntimeError("Impossible d'ouvrir le fichier")
+    band = ds.GetRasterBand(int(band_idx))
+    arr = band.ReadAsArray().astype(np.float32)
     Xsize = ds.RasterXSize
     Ysize = ds.RasterYSize
     geotrans = ds.GetGeoTransform()
     proj = ds.GetProjection()
 
-    return data, Xsize, Ysize, geotrans, proj
+    return arr, Xsize, Ysize, geotrans, proj
 
 # read arguments
 arguments = docopt.docopt(__doc__)
 
-ifg_path = arguments["--ifg"]
-coh_path = arguments["--coh"]
+unw_path = arguments["--unw"]
 
-phi, Xifg, Yifg, geotrans, proj = open_raster(ifg_path)
-coh, Xcoh, Ycoh, _, _ = open_raster(coh_path)
+phi, Xifg, Yifg, geotrans, proj = open_raster(unw_path, band_idx=2)
+coh, Xcoh, Ycoh, _, _ = open_raster(unw_path, band_idx=1)
 
 if Xifg != Xcoh or Yifg != Ycoh:
     print('ERROR : not the same size')
     sys.exit
 
-coh[phi == 0] = 0
+phi[coh == 0.] = 0.
 
-basename = os.path.splitext(os.path.basename(ifg_path))[0]
-match = re.search(r'\d{8}_\d{8}', basename)
-if match:
-    new_dates = match.group().replace('_', '-')
-    basename_modified = basename.replace(match.group(), new_dates, 1)
-else:
-    basename_modified = basename
-output_path = os.path.join(os.path.dirname(ifg_path), basename_modified + ".unw")
+output_path = os.path.join(os.path.dirname(unw_path), unw_path)
 
 drv = gdal.GetDriverByName("roi_pac")
 dst_ds = drv.Create(output_path, Xifg, Yifg, 2, gdal.GDT_Float32)
@@ -87,7 +81,7 @@ del band1
 del band2
 del dst_ds
 
-print(f".int saved: {output_path}")
+print(f".unw saved: {output_path}")
 
 ## Modification of the .rsc file
 

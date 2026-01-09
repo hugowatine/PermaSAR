@@ -15,7 +15,10 @@ clean_raster.py
 Clean a raster file given an other r4 file (mask) and a threshold on this mask
 
 Usage: clean_raster.py --infile=<path> --outfile=<path>  [--mask=<path>] [--threshold=<value>] \
-[--perc=<value>] [--crop=<values>] [--buff=<value>] [--lectfile=<path>] [--scale=<value>] [--scale_mask=<value>] [--ramp=<lin/quad/cub/4/no>] [--ref=<jstart,jend,istart,iend>] [--removeNAN=<yes/no>] [--cst=<value>] [--absolute=<yes/no>]  [--reverse=<yes/no>] [--filter=<HP/LP>] [--fwindsize=<value>]
+[--perc=<value>] [--crop=<values>] [--buff=<value>] [--lectfile=<path>] [--scale=<value>] \
+[--scale_mask=<value>] [--ramp=<lin/quad/cub/4/no>] [--ref=<jstart,jend,istart,iend>] [--removeNAN=<yes/no>]\
+[--cst=<value>] [--absolute=<yes/no>]  [--reverse=<yes/no>] [--filter=<HP/LP>] [--fwindsize=<value>] [--interpolate=<value>]\
+[--mask_ramp=<path>] [--threshold_ramp=<value>] [--filter_freq=<value>]
 
 Options:
 -h --help           Show this screen.
@@ -31,12 +34,16 @@ Options:
 --crop VALUE       Crop option with smoothing of boundaries [default: 0,ncols,0,nlines]
 --buff VALUE        Number of pixels for crop smothing  (default: 50)
 --perc VALUE        Percentile of hidden LOS pixel for the estimation and clean outliers [default:100]
+--mask_ramp PATH    r4 file used as mask for ramp estimation
+--threshold_ramp VALUE   threshold value on mask for ramp estimation file (Keep pixel with mask < threshold)
 --ramp<lin/quad/cub/no>      Correct the map from ramp in range and azimuth
 --ref=<jstart,jend,istart,iend> Set to zero displacements from jstart to jend
 --removeNAN         replace NaN by 0
 --cst               Add constante to map
 --filter=<HP/LP> Apply a high pass (HP) or a low pass (LP) gaussian filter to the image
 --fwindsize=<value> Filter window size (default: 16)
+--interpolate VALUE interpolate nodata value
+--filter_freq   yes,no
 """
 
 print()
@@ -51,6 +58,8 @@ from numpy.lib.stride_tricks import as_strided
 import scipy.optimize as opt
 import scipy.linalg as lst
 from scipy import ndimage
+from scipy import interpolate
+from scipy import fftpack
 
 import matplotlib as mpl
 from matplotlib import pyplot as plt
@@ -86,8 +95,10 @@ else:
 
 if arguments["--removeNAN"] ==  None:
    setzero = 'no'
+elif arguments["--removeNAN"] ==  'NaN':
+    setzero = np.nan
 else:
-   setzero = arguments["--removeNAN"]
+   setzero = float(arguments["--removeNAN"])
 
 if arguments["--perc"] ==  None:
     perc = 100
@@ -98,6 +109,15 @@ if arguments["--cst"] ==  None:
     shift = 0
 else:
     shift = float(arguments["--cst"])
+
+if arguments["--mask_ramp"] ==  None:
+    mask_ramp = 'no'
+else:
+    mask_ramp = arguments["--mask_ramp"]
+if arguments["--threshold_ramp"] ==  None:
+    seuil_ramp = -1e10
+else:
+    seuil_ramp = float(arguments["--threshold_ramp"])
 
 if (arguments["--ramp"] == None) or (arguments["--ramp"] == 'no'):
     ramp = 'no'
@@ -127,6 +147,9 @@ else:
 if arguments["--fwindsize"] == None:
     arguments["--fwindsize"] = 16
 
+if arguments["--filter_freq"] == None:
+    arguments["--filter_freq"] = 'no'
+
 ds_extension = os.path.splitext(infile)[1]
 if (ds_extension == ".tif" or ds_extension ==".tiff" or ds_extension ==".grd"):
     from osgeo import gdal
@@ -144,6 +167,7 @@ if (ds_extension == ".tif" or ds_extension ==".tiff" or ds_extension ==".grd"):
     m = band.ReadAsArray(0, 0,
                                ds.RasterXSize, ds.RasterYSize,
                                ds.RasterXSize, ds.RasterYSize)
+    print(m[0])
 else:
     sformat = 'R4'
     # read lect.in 
@@ -192,12 +216,86 @@ if reverse:
       kk = np.nonzero(np.logical_or(mask==0, mask<seuil)) 
 else:
       kk = np.nonzero(np.logical_or(mask==0, mask>seuil)) 
-mf[kk] = float('NaN')
+mf[kk] = np.nan
 
 # apply  scale and manual cst
 mf = scale*(mf - shift)
 
 # apply high pass filter
+if arguments["--filter_freq"] == 'yes':
+    #mf[mf == 0] = np.nan
+    mf_copy = mf
+    plt.figure()
+    plt.imshow(mf_copy, cmap='rainbow', vmin=np.nanpercentile(mf_copy, 2), vmax=np.nanpercentile(mf_copy, 98))
+    plt.title("Image originale")
+    plt.colorbar()
+    plt.show()
+
+    F = np.fft.fft2(mf_copy)
+    F_shift = np.fft.fftshift(F)
+    magnitude_spectrum = np.abs(F_shift)
+    log_spectrum = np.log1p(magnitude_spectrum)  # log(1 + x)
+    plt.figure(figsize=(8,6))
+    plt.imshow(log_spectrum, cmap='gray', origin='upper', vmin=np.nanpercentile(log_spectrum, 2), vmax=np.nanpercentile(log_spectrum, 98))
+    plt.title("Spectre en fréquence 2D")
+    plt.colorbar()
+    plt.show()
+
+    n, m = mf_copy.shape
+    X, Y = np.meshgrid(np.arange(m), np.arange(n))
+    center_x, center_y = m//2, n//2
+
+    # # Liste des rayons
+    # radii = [1, 2, 4, 8, 10]
+
+    # # Préparer figure
+    # fig, axes = plt.subplots(1, len(radii), figsize=(16, 5))
+
+    # for i, radius in enumerate(radii):
+    #     # Masque passe-haut
+    #     mask = np.sqrt((X - center_x)**2 + (Y - center_y)**2) > radius
+    #     F_filtered = F_shift * mask
+
+    #     # Inverse FFT
+    #     F_ishift = np.fft.ifftshift(F_filtered)
+    #     img_hp = np.fft.ifft2(F_ishift)
+    #     img_hp = np.abs(img_hp)
+
+    #     # Affichage
+    #     ax = axes[i]
+    #     im = ax.imshow(img_hp, cmap='rainbow', origin='upper',
+    #                 vmin=np.nanpercentile(mf_copy, 2),
+    #                 vmax=np.nanpercentile(mf_copy, 98))
+    #     ax.set_title(f'High-pass r={radius}')
+    #     ax.axis('off')
+
+    # # Barre de couleur globale
+    # cbar = fig.colorbar(im, ax=axes.ravel().tolist(), orientation='vertical', fraction=0.02, pad=0.01)
+    # cbar.set_label("Amplitude")
+    # plt.tight_layout()
+    # plt.show()
+
+    radius = 4
+    mask = np.sqrt((X - center_x)**2 + (Y - center_y)**2) > radius
+    F_filtered = F_shift * mask
+
+    # Inverse FFT
+    F_ishift = np.fft.ifftshift(F_filtered)
+    img_hp = np.fft.ifft2(F_ishift)
+    img_hp = np.abs(img_hp)
+
+    fig, ax = plt.subplots(1, 1, figsize=(16, 5))
+    im = ax.imshow(img_hp, cmap='rainbow', origin='upper',
+                vmin=np.nanpercentile(mf_copy, 2),
+                vmax=np.nanpercentile(mf_copy, 98))
+    ax.set_title(f'High-pass r={radius}')
+    ax.axis('off')
+    plt.colorbar(im, ax=ax)
+    plt.show()
+
+
+
+
 if arguments["--filter"] == 'HP':
     # make array with nans replaced by zeros and filter it
     mf[mf == 0] = np.nan
@@ -213,23 +311,118 @@ if arguments["--filter"] == 'HP':
     m_lp = m_lp_vals/m_lp_ones
     # subtract to obtain hp filter
     mf = mf - m_lp
-    mf[np.isnan(mf)] = 0.
+    if setzero == 'yes': 
+        mf[np.isnan(mf)] = setzero
+    else:
+        mf[np.isnan(mf)] = np.nan
+    
+    arrays = {
+        "m_filter_vals": m_filter_vals,
+        "m_lp_vals": m_lp_vals,
+        "m_filter_ones": m_filter_ones,
+        "m_lp_ones": m_lp_ones,
+        "m_lp": m_lp,
+        "mf (final)": mf,
+    }
+
+    # 📊 affichage avec matplotlib
+    # n = len(arrays)
+    # fig, axes = plt.subplots(2, 3, figsize=(15, 12))
+    # axes = axes.ravel()
+
+    # for i, (name, arr) in enumerate(arrays.items()):
+    #     vmax,vmin = np.nanpercentile(arr, 98), np.nanpercentile(arr, 2)
+    #     im = axes[i].imshow(arr, cmap="viridis", aspect="auto", vmin=vmin, vmax=vmax)
+    #     axes[i].set_title(name)
+    #     fig.colorbar(im, ax=axes[i], fraction=0.046, pad=0.04)
+
+    # plt.tight_layout()
+    # plt.show()
 
 elif arguments["--filter"] == 'LP':
+
     m_filter = np.copy(mf)
     index = np.isnan(mf)
     m_filter[index] = 0.
     mf = ndimage.gaussian_filter(m_filter, int(arguments["--fwindsize"]))
-    mf[index] = float('nan')
+    if setzero == 'yes':
+        mf[index] = setzero
+    else:
+        mf[index] = float('nan')
+
+if arguments["--interpolate"] == 'yes':
+    n_iter=10
+    sigma=1.5
+    filled = np.copy(mf)
+    filled[filled == 0] = np.nan
+    nan_mask = np.isnan(filled)
+    filled[nan_mask] = 0  # initialisation
+    
+    print('coucou')
+    for _ in range(n_iter):
+        print(_)
+        smooth = ndimage.gaussian_filter(filled, sigma=sigma)
+        filled[nan_mask] = smooth[nan_mask]
+
+    mf=filled
+
+
+plt.hist(
+    mf[np.isfinite(mf)].flatten(),  # enlève les NaN et aplatit
+    bins=100,                      # nombre de classes
+    range=(-2, 2),                 # limites de l’histogramme
+    color='steelblue',             # couleur (optionnel)
+    edgecolor='black'              # bordures visibles (optionnel)
+)
+plt.xlabel("Valeur")
+plt.ylabel("Fréquence")
+plt.title("Histogramme de mf")
+plt.show()
 
 if ramp != 'no':
-    # clean for ramp
-    maxlos,minlos=np.nanpercentile(m,98),np.nanpercentile(m,2)
-    print('Clean outliers for ramp estimation outside:', maxlos,minlos)
-    kk = np.nonzero(
-        np.logical_or(m<minlos,m>maxlos))
+    if mask_ramp != 'no':
+        ds_extension = os.path.splitext(mask_ramp)[1]
+        print(mask_ramp)
+        if (ds_extension == ".tif" or ds_extension ==".tiff" or ds_extension ==".grd"):
+            from osgeo import gdal
+            ds = gdal.Open(mask_ramp, gdal.GA_ReadOnly)
+            band = ds.GetRasterBand(1)
+            # Attributes
+            print("> Driver:   ", ds.GetDriver().ShortName)
+            print("> Size:     ", ds.RasterXSize,'x',ds.RasterYSize,'x',ds.RasterCount)
+            print("> Datatype: ", gdal.GetDataTypeName(band.DataType))
+            mask = band.ReadAsArray(0, 0,
+                                    ds.RasterXSize, ds.RasterYSize,
+                                    ds.RasterXSize, ds.RasterYSize)
+        else:
+            fid2 = open(mask_ramp, 'r')
+            mask = np.fromfile(fid2,dtype=float32)[:nlines*ncols].reshape((nlines,ncols))
+            mask =  mask*scale_mask
+            mask[np.isnan(mask)] = 0
+
+
+    if mask_ramp != 'no':
+        maxlos,minlos=np.nanpercentile(m,99.9),np.nanpercentile(m,0.01)
+        print('Clean outliers for ramp estimation outside:', maxlos,minlos)
+        kk = np.nonzero((m < minlos) | (m > maxlos) | (mask > seuil_ramp) | ((m > -0.1) & (m < 0.1)))
+    else :
+        # clean for ramp
+        maxlos,minlos=np.nanpercentile(m,98),np.nanpercentile(m,2)
+        #maxlos,minlos=np.nanpercentile(m,98),np.nanpercentile(m,2)
+        print('Clean outliers for ramp estimation outside:', maxlos,minlos)
+        kk = np.nonzero((m < minlos) | (m > maxlos))
+        
+    k0 = np.nonzero((m == 0.))
     m_ramp = np.copy(mf)
-    m_ramp[kk] = float('NaN')
+    m_ramp[kk] = np.nan
+    m_ramp[k0] = np.nan
+
+    plt.figure(figsize=(8,6))
+    plt.imshow(m_ramp, cmap='RdBu_r', vmin=np.nanpercentile(m_ramp, 2), vmax=np.nanpercentile(m_ramp, 98))
+    plt.title("m_ramp (après nettoyage pour estimation de la rampe)")
+    plt.colorbar(label='Valeur')
+    plt.tight_layout()
+    plt.show()
 
 if ramp == 'lin':
     index = np.nonzero(~np.isnan(m_ramp))
@@ -378,6 +571,9 @@ elif ramp=='4':
 else:
     ramp= np.zeros(np.shape(m))
 
+if 'k0' in locals():
+    mf[k0] = 0.
+
 if (arguments["--ref"] != None) :
     cst = np.nanmean(mf[lin_start:lin_end,col_start:col_end])
     mf = mf - cst
@@ -437,24 +633,35 @@ if iend-ibeg<ncols or jend-jbeg<nlines:
     mf[:,ibeg1:iend1] = float('NaN')
     mf[:,ibeg2:iend2] = float('NaN')
 
+plt.hist(
+    mf[np.isfinite(mf)].flatten(),  # enlève les NaN et aplatit
+    bins=100,                      # nombre de classes
+    range=(-2, 2),                 # limites de l’histogramme
+    color='steelblue',             # couleur (optionnel)
+    edgecolor='black'              # bordures visibles (optionnel)
+)
+plt.xlabel("Valeur")
+plt.ylabel("Fréquence")
+plt.title("Histogramme de mf")
+plt.show()
+
+
 # clean based on perc
 maxlos,minlos=np.nanpercentile(mf,perc),np.nanpercentile(mf,(100-perc))
 print('Clean outliers outside {}-{} with perc:{}:'.format(maxlos,minlos,perc))
-kk = np.nonzero(
-    np.logical_or(mf<minlos,mf>maxlos))
-#mf[kk] = float('NaN')
-mf[kk] = 0
+mf[mf < minlos] = 0.
+mf[mf > maxlos] = maxlos
 
 # Plot
 vmax = np.nanpercentile(mf,98)
 vmin = np.nanpercentile(mf,2)
 
-if setzero == 'yes':
-    print('HELLO')
+if setzero != 'no':
     # replace "NaN" to 0
-    mf[np.isnan(mf)] = 0.
+    mf[np.isnan(mf)] = setzero
     #mf[np.isnan(m)] = np.nan
 
+print((mf[0]))
 #save output
 if sformat == 'R4':
     fid3 = open(outfile,'wb')

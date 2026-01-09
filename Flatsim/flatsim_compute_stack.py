@@ -52,7 +52,6 @@ print()
 
 # read arguments
 arguments = docopt.docopt(__doc__)
-arguments = docopt.docopt(__doc__)
 home=os.path.abspath(arguments["--homedir"])  + '/'
 int_path=os.path.join(home, arguments["--int_path"]) + '/'
 int_list = os.path.join(home,arguments["--int_list"])

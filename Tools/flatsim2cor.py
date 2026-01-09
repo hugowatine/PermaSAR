@@ -9,11 +9,12 @@ flatsim2cor.py
 -------------
 create .cor and .rsc files from flatsim data.
 
-Usage: flatsim2int.py --coh=<path>\
+Usage: flatsim2int.py --coh=<path> [--plot]\
 
 Options:
 -h --help           Show this screen.
 --coh PATH          path of Coh .tif file with, in band (1), the spatial coherence. Need to be in the same geometry and resolution than InW
+--plot          Display the input coh map and the generated .cor file.
 """
 
 print()
@@ -24,6 +25,7 @@ print()
 
 import numpy as np
 from osgeo import gdal, osr, gdalconst
+import matplotlib.pyplot as plt
 
 gdal.UseExceptions()
 
@@ -94,3 +96,28 @@ with open(output_path + '.rsc', 'w') as f:
 
 print(f".rsc saved: {output_path+'.rsc'}")
 
+do_plot = arguments["--plot"]
+if do_plot:
+    print("\n Displaying input and output images...\n")
+
+    # Reload output .cor file (band 1)
+    ds_cor = gdal.Open(output_path, gdalconst.GA_ReadOnly)
+    cor = ds_cor.GetRasterBand(1).ReadAsArray()
+    del ds_cor
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    im0 = axes[0].imshow(coh, cmap="viridis")
+    axes[0].set_title("Input COH (tif)")
+    plt.colorbar(im0, ax=axes[0])
+
+    im1 = axes[1].imshow(cor, cmap="viridis")
+    axes[1].set_title(".cor output")
+    plt.colorbar(im1, ax=axes[1])
+
+    for ax in axes:
+        ax.axis("off")
+
+    plt.suptitle(f"flatsim2cor preview: {basename_modified}")
+    plt.tight_layout()
+    plt.show()

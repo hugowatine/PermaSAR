@@ -9,8 +9,8 @@ r4totiff.py
 -------------
 Change real4 file to a Tiff file
 
-Usage: histo_r4.py --infile=<path> --outfile=<path> --ref_file=<path> [--lectfile=<path>]
-histo_r4.py -h | --help
+Usage: r4totiff.py --infile=<path> --outfile=<path> --ref_file=<path> [--lectfile=<path>]
+r4totiff.py -h | --help
 
 Options:
 -h --help           Show this screen
@@ -69,25 +69,18 @@ m = np.fromfile(fid,dtype=np.float32).reshape((nlines,ncols))
 
 #Take metadata from ref_file
 ds = gdal.Open(ref_file)
-ds_geo = list(ds.GetGeoTransform())
+ds_geo = ds.GetGeoTransform()
 proj = ds.GetProjection()
-
-new_lat, new_lon = pixel_to_latlon(ds, 2400+99, 2600+133)
-print( new_lat, new_lon)
 
 drv = gdal.GetDriverByName('GTiff')
 dst_ds = drv.Create(outfile, ncols, nlines, 1, gdal.GDT_Float32)
-
-# Update the geotransform with the new origin
-
-ds_geo[0] = new_lon  # New X origin
-ds_geo[3] = new_lat  # New Y origin
-
-dst_ds.SetGeoTransform(tuple(ds_geo))
+dst_ds.SetGeoTransform(ds_geo)
 dst_ds.SetProjection(proj)
-dst_band = dst_ds.GetRasterBand(1)
 
+dst_band = dst_ds.GetRasterBand(1)
 dst_band.WriteArray(m)
+dst_band.FlushCache()
 
 print(f'The file "{outfile}" has been successfully saved.')
 print()
+print("coucouuuu")
