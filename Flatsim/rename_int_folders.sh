@@ -3,11 +3,8 @@
 # Chemin vers le dossier passé en argument
 input_dir="$1"
 
-# Vérifie que le dossier existe
-if [ ! -d "$input_dir" ]; then
-  echo "Le dossier spécifié n'existe pas."
-  exit 1
-fi
+output_file="$input_dir/filtered_inter_pair.rsc"
+> "$output_file"
 
 # Parcours des sous-dossiers
 for folder in "$input_dir"/NSBAS_INT-PKG_S1*; do
@@ -21,7 +18,9 @@ for folder in "$input_dir"/NSBAS_INT-PKG_S1*; do
       newname="int_${date1}_${date2}"
       mv "$folder" "$input_dir/$newname"
       echo "Renommé : $basename -> $newname"
+	  echo "$date1 $date2" >> "$output_file"
     fi
   fi
 done
 
+echo "$output_file file has been update"
