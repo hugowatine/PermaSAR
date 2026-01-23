@@ -50,11 +50,11 @@ XMIN = (X_FIRST_geocoded - X_FIRST_geomap) / X_STEP_geomap
 YMIN = (Y_FIRST_geocoded - Y_FIRST_geomap) / Y_STEP_geomap
 
 XMAX = ((X_FIRST_geocoded + WIDTH_geocoded * X_STEP_geocoded) - X_FIRST_geomap) / X_STEP_geomap
+YMAX = ((Y_FIRST_geocoded + WIDTH_geocoded * Y_STEP_geocoded) - Y_FIRST_geomap) / Y_STEP_geomap
 #print(Y_FIRST_geocoded)
 #print(Y_FIRST_geomap)
 #print(Y_FIRST_geocoded + WIDTH_geocoded * Y_STEP_geocoded)
 #print(Y_FIRST_geomap + WIDTH_geomap * Y_STEP_geomap)
-YMAX = ((Y_FIRST_geocoded + WIDTH_geocoded * Y_STEP_geocoded) - Y_FIRST_geomap) / Y_STEP_geomap
 
 print(f"\nDécalages calculés : XMIN = {int(XMIN)}, YMIN = {int(YMIN)}, XMAX = {int(XMAX)}, YMAX = {int(YMAX)}")
 
