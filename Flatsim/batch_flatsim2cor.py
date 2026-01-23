@@ -34,7 +34,7 @@ def process_subdir(flatsim_script, base_dir, subdir):
 
     coh = None
     for f in os.listdir(full_path):
-        if f.startswith("CNES_Coh_geo") and f.endswith("mask_8rlks.tiff"):
+        if f.startswith("CNES_Coh_geo") and f.endswith("8rlks.tiff"):
             coh = os.path.join(full_path, f)
 
     if coh:
@@ -85,7 +85,7 @@ def main():
         print(f"❌ Erreur : le chemin '{base_dir}' n'existe pas ou n'est pas un dossier.")
         sys.exit(1)
 
-    flatsim_script = os.path.expanduser("~/PermaSAR/Tools/flatsim2cor.py")
+    flatsim_script = "flatsim2cor.py"
     pattern = re.compile(r"^int_\d{8}_\d{8}$")
 
     print(f"\n🔍 Recherche des dossiers dans : {base_dir}\n")
@@ -134,91 +134,3 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-
-
-
-# #!/usr/bin/env python3
-# # -*- coding: utf-8 -*-
-# ############################################
-# # Author        : Hugo WATINE (CRPG)
-# ############################################
-
-# """
-# batch_flatsim2cor.py
-# --------------------
-# Script pour lancer automatiquement flatsim2cor.py sur tous les dossiers int_YYYYMMDD_YYYYMMDD.
-
-# Usage:
-#     batch_flatsim2int.py --path=<path>
-#     batch_flatsim2int.py -h | --help
-
-# Options:
-#     --path=<path>    Répertoire contenant les dossiers à traiter (obligatoire)
-#     -h --help        Affiche ce message d'aide.
-# """
-
-# import os
-# import re
-# import subprocess
-# import sys
-# from docopt import docopt
-
-# def main():
-#     arguments = docopt(__doc__)
-
-#     base_dir = arguments["--path"]
-#     if base_dir is None:
-#         print("❌ Erreur : l'option --path est obligatoire.")
-#         sys.exit(1)
-
-#     base_dir = os.path.abspath(base_dir)
-
-#     if not os.path.isdir(base_dir):
-#         print(f"❌ Erreur : le chemin '{base_dir}' n'existe pas ou n'est pas un dossier.")
-#         sys.exit(1)
-
-#     flatsim_script = os.path.expanduser("~/PermaSAR/Tools/flatsim2cor.py")
-#     pattern = re.compile(r"^int_\d{8}_\d{8}$")
-
-#     print(f"\n🔍 Recherche des dossiers dans : {base_dir}\n")
-
-#     # Filtrer les dossiers valides
-#     all_subdirs = sorted([
-#         d for d in os.listdir(base_dir)
-#         if os.path.isdir(os.path.join(base_dir, d)) and pattern.match(d)
-#     ])
-
-#     total = len(all_subdirs)
-
-#     if total == 0:
-#         print("❌ Aucun dossier 'int_YYYYMMDD_YYYYMMDD' trouvé dans ce répertoire.")
-#         sys.exit(1)
-
-#     for idx, subdir in enumerate(all_subdirs, start=1):
-#         full_path = os.path.join(base_dir, subdir)
-#         print(f"\n📁 Traitement du dossier {idx}/{total} : {subdir}")
-
-#         coh = None
-#         for f in os.listdir(full_path):
-#             if f.startswith("CNES_Coh_geo") and f.endswith(".tiff"):
-#                 coh = os.path.join(full_path, f)
-
-#         if coh:
-#             cmd = [
-#                 "python3",
-#                 flatsim_script,
-#                 f"--coh={coh}"
-#             ]
-#             print("  → Exécution :", " ".join(cmd))
-#             try:
-#                 subprocess.run(cmd, check=True)
-#             except subprocess.CalledProcessError as e:
-#                 print(f"  ❌ Erreur dans {subdir} : {e}")
-#         else:
-#             print(f"  ⚠️  Fichiers ifg/coh manquants dans {subdir}, traitement ignoré.")
-
-#     print(f"\n✅ Traitement terminé pour {total} dossier(s).\n")
-
-# if __name__ == "__main__":
-#     main()
