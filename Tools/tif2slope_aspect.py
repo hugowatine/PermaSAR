@@ -56,6 +56,7 @@ def compute_slope_aspect(dem_path, filter_size=2.0, plot=True):
 
     # Determine resolution based on coordinate system
     res_x, res_y = gt[1], gt[5]
+    res_x = 120; res_y = -120 # resolution in 8rlks/ should be adapted 
     srs = osr.SpatialReference(wkt=projref)
 
     if srs.IsGeographic():
