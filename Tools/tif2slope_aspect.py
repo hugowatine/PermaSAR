@@ -65,7 +65,7 @@ def compute_slope_aspect(dem_path, filter_size=2.0, plot=True):
         print("Geographic coordinates (converted to meters)")
     else:
         print("Projected coordinates (meters)")
-
+ 
     print(f"Resolution: dx={res_x:.2f}, dy={res_y:.2f}")
 
     # Compute gradient (first axis = Y, second axis = X)

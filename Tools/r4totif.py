@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 ############################################
-# Author        : Hugo Watine (CRPG)
+# Author        : Simon Daout (CRPG)
+# Modification by Hugo Watine in September 2025
 ############################################
 
 """\
@@ -82,5 +83,4 @@ dst_band.WriteArray(m)
 dst_band.FlushCache()
 
 print(f'The file "{outfile}" has been successfully saved.')
-print()
-print("coucouuuu")
+

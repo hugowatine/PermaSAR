@@ -9,14 +9,15 @@ flatism_compute_mean_miscolsure.py
 -------------
 Compute misclosure of interferograms (in rad) averaged by bins of temporal baseline.
 
-Usage: flatism_compute_mean_miscolsure.py [--list_pair=<path>] [--output=<file>] [--weight]
+Usage: flatism_compute_mean_miscolsure.py --output=<file> [--list_pair=<path>]  [--weight] [--plot]
 flatism_compute_mean_miscolsure.py -h | --help
 
 Options:
 -h --help           Show this screen
 --list_pair PATH      Path to the list of interferogram col1=date1 col2=date2 and, if it exist, col3=weights [default:list_pair]
---output PATH         Path for the output figure .pdf if not given, we do not save the figure.  
+--output PATH         Path for the output figure .pdf and the raster .tiff
 --weight              Use weighted mean using column 3 of list_pair
+--plot                Do plot
 """
 
 import numpy as np
@@ -101,10 +102,10 @@ for group_name, baseline_list in groups.items():
             w = weights[idx] if (use_weight and weights is not None) else 1.0
 
             if rms_sum is None:
-                rms_sum = rms.astype(np.float64)
+                rms_sum = rms.astype(np.float64)*w
             else:
-                rms_sum += rms
-            count += 1
+                rms_sum += rms * w
+            count += w
 
             if global_sum is None:
                 global_sum = rms.astype(np.float64)*w
@@ -132,35 +133,59 @@ group_count["GLOBAL"] = global_weight
 #vmax = max(arr.max() for arr in group_results.values())
 #max_abs = max(abs(vmin), abs(vmax))
 
-n = len(group_results)
-fig, axes = plt.subplots(2, n, figsize=(4*n, 8), gridspec_kw={'height_ratios':[3, 1]})
+if arguments["--plot"]:
+    n = len(group_results)
+    fig, axes = plt.subplots(2, n, figsize=(4*n, 8), gridspec_kw={'height_ratios':[3, 1]})
 
-for i, (group_name, arr) in enumerate(group_results.items()):
-    # Carte RMS mean
-    vmin, vmax = np.percentile(arr, [2, 98])
-    max_abs = max(abs(vmin), abs(vmax))
-    max_abs = 0.1
-    im = axes[0, i].imshow(arr, cmap='RdBu', vmin=-max_abs, vmax=max_abs)
-    axes[0, i].set_title(f"{group_name.replace('_',' ')} : {group_count[group_name]}", fontsize=12)
-    axes[0, i].axis('off')
-    
-    # Colorbar pour chaque image
-    cbar = fig.colorbar(im, ax=axes[0, i], fraction=0.046, pad=0.04)
-    cbar.set_label("RMS mean")
-    
-    # Histogramme sous la carte
-    arr_nonzero = arr[arr != 0.0]
-    mean_val = arr_nonzero.mean()
-    axes[1, i].hist(arr_nonzero, range=(-0.2, 0.2), bins=100, color='k', alpha=0.5, density=True)
-    axes[1, i].axvline(mean_val, color='k', linestyle='--', linewidth=2)
-    axes[1, i].text(0.95, 0.95, f"{mean_val:.3f}", color='k', fontweight='bold',
-                    ha='right', va='top', transform=axes[1, i].transAxes)
-    axes[1, i].set_xlabel("RMS mean")
-    axes[1, i].set_ylabel("Normalized count")
-    axes[1, i].grid(True, linestyle='--', alpha=0.5)
+    for i, (group_name, arr) in enumerate(group_results.items()):
+        # Carte RMS mean
+        vmin, vmax = np.percentile(arr, [2, 98])
+        max_abs = max(abs(vmin), abs(vmax))
+        max_abs = 0.1
+        im = axes[0, i].imshow(arr, cmap='RdBu', vmin=-max_abs, vmax=max_abs)
+        axes[0, i].set_title(f"{group_name.replace('_',' ')} : {group_count[group_name]}", fontsize=12)
+        axes[0, i].axis('off')
+        
+        # Colorbar pour chaque image
+        cbar = fig.colorbar(im, ax=axes[0, i], fraction=0.046, pad=0.04)
+        cbar.set_label("RMS mean")
+        
+        # Histogramme sous la carte
+        arr_nonzero = arr[arr != 0.0]
+        mean_val = arr_nonzero.mean()
+        axes[1, i].hist(arr_nonzero, range=(-0.2, 0.2), bins=100, color='k', alpha=0.5, density=True)
+        axes[1, i].axvline(mean_val, color='k', linestyle='--', linewidth=2)
+        axes[1, i].text(0.95, 0.95, f"{mean_val:.3f}", color='k', fontweight='bold',
+                        ha='right', va='top', transform=axes[1, i].transAxes)
+        axes[1, i].set_xlabel("RMS mean")
+        axes[1, i].set_ylabel("Normalized count")
+        axes[1, i].grid(True, linestyle='--', alpha=0.5)
 
-plt.tight_layout()
-plt.show()
+        plt.tight_layout()
+        plt.savefig(str(arguments["--output"]+'.pdf'), dpi=300)
+        plt.show()
+
+ds_template = gdal.Open(fname)
+driver = gdal.GetDriverByName("GTiff")
+ds = driver.CreateCopy(str(arguments["--output"]+'.tiff'), ds_template)
+
+band_obj = ds.GetRasterBand(1)
+ndv = band_obj.GetNoDataValue()
+global_mean = np.where(global_mean == 0.0, np.nan, global_mean)
+
+if ndv is not None:
+    data = np.where(np.isnan(global_mean), ndv, global_mean)
+    band_obj.SetNoDataValue(ndv)
+else:
+    data = global_mean
+
+band_obj.WriteArray(data)
+band_obj.FlushCache()
+ds = None
+print("save:", str(arguments["--output"]+'.tiff'))
+
+
+
 
 
 

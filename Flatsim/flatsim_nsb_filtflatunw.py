@@ -1187,13 +1187,13 @@ def flat_model(config,kk):
         copyrsc(inrsc,filtoutrsc)
 
         #Parameters
-        nregion = int(60)
+        nregion = int(30)
         thresh_amp = 0.1
         thresh_cohreg = 0.6
-        thresh_model = 0.4
+        thresh_model = 0.3
         
         if force:
-            rm(outfile); rm(param)
+            rm(outfile)#; rm(param)
             try:
               unlink(newparam)
             except:
@@ -1202,8 +1202,8 @@ def flat_model(config,kk):
             do = checkoutfile(config,outfile)
             if do:
                 try:
-                    #run(f"/home/hugo/PermaSAR/Tools/flatten_stack.py {infile} {filtfile} {config.model} --nreg={nregion} --thresh_amp={thresh_amp} --thresh_cohreg={thresh_cohreg} --thresh_model={thresh_model} --weightmedian=yes")
-                    run(f"/home/hugo/PermaSAR/Tools/flatten_stack.py {infile} {filtfile} {config.model} --nreg={nregion} --thresh_amp={thresh_amp} --thresh_cohreg={thresh_cohreg} --thresh_model={thresh_model}")
+                    run(f"/home/hugo/PermaSAR/Tools/flatten_stack.py {infile} {filtfile} {config.model} --nreg={nregion} --thresh_amp={thresh_amp} --thresh_cohreg={thresh_cohreg} --thresh_model={thresh_model} --weightmedian=yes")
+                    #run(f"/home/hugo/PermaSAR/Tools/flatten_stack.py {infile} {filtfile} {config.model} --nreg={nregion} --thresh_amp={thresh_amp} --thresh_cohreg={thresh_cohreg} --thresh_model={thresh_model}")
                     
                     #run(f"/home/hugo/PermaSAR/Tools/flatten_stack.py {infile} {filtfile} {config.model} --nreg={nregion} --thresh_amp={thresh_amp} --thresh_cohreg={thresh_cohreg} --thresh_model={thresh_model} --outfile=testlin")
                     #run("flatten_stack.py "+str(infile)+" "+str(filtfile)+" "+str(config.model)+" "+"--outfile="+str(outfile)+" "+"--nreg="+str(nregion)+ "")
@@ -1687,14 +1687,14 @@ def add_model_back(config,kk):
         # the final product is always filtROI
         unwfile = config.stack.getfiltROI(kk) + '.unw'; checkinfile(unwfile)
         if "_nomodel" in unwfile:
-        #if "_testamp" in unwfile:
+        #if "_snow" in unwfile:
             unwrsc = unwfile + '.rsc'
             param = config.stack.getmodelfile(kk)
-            #param = param.split('.')[0] + '_testamp.' + param.split('.')[1]
+            #param = param.split('.')[0] + '_snow.' + param.split('.')[1]
             # update names
             prefix, suffix = config.stack.getfix(kk)
             newsuffix = suffix.replace("_nomodel", "")
-            #newsuffix = suffix.replace("_testamp", "")
+            #newsuffix = suffix.replace("_snow", "")
             config.stack.updatefix(kk,prefix,newsuffix)
             outfile = config.stack.getfiltROI(kk) + '.unw'
             outrsc = outfile + '.rsc'

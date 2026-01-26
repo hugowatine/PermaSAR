@@ -27,7 +27,7 @@ Usage:
 
 Options:
   -o OUT_PATH        Write figure to file.
-  --weight=yes/no    Color edges using weight values from <pair_file> (default: no)
+  --weight=yes/no    Color edges using weight values from <pair_file>, col number 3 (default: no)
   -h --help          Show this screen.
 """
 

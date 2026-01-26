@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+############################################
+# Author        : Léo lettelier (CRPG)
+############################################
 """
-figure_pairs.py
+network_connectivity.py
 ------------
 
-Usage: figure_pairs.py <table>
+Usage: network_connectivity.py <table> [--save-dir=<save-dir>]
 
 Options:
 -h | --help         Show this screen
@@ -13,8 +16,11 @@ Options:
 import docopt
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 from datetime import datetime
 from cmcrameri import cm
+import os
 
 
 def read_pairs_file(file):
@@ -36,6 +42,7 @@ def read_pairs_file(file):
 if __name__ == "__main__":
     arguments = docopt.docopt(__doc__)
     table = arguments["<table>"]
+    save = arguments["--save-dir"]
 
     pairs = read_pairs_file(table)
     print("Number of pairs", len(pairs))
@@ -49,14 +56,10 @@ if __name__ == "__main__":
     all_dates = [datetime.strptime(d, "%Y%m%d") for d in all_dates]
     all_dates.sort()
 
-    step_count_1month = np.zeros(len(all_dates) - 1)
-    step_count_3month = np.zeros(len(all_dates) - 1)
-    step_count_6month = np.zeros(len(all_dates) - 1)
-    step_count_more = np.zeros(len(all_dates) - 1)
+    step_count = np.zeros((13, len(all_dates) - 1))
     for d in range(len(all_dates) - 1):
         step1 = all_dates[d]
         step2 = all_dates[d + 1]
-
         for p in range(len(pairs)):
             if dates1[p] < dates2[p]:
                 d1 = dates1[p]
@@ -66,29 +69,60 @@ if __name__ == "__main__":
                 d2 = dates1[p]
             if not (d2 < step1 or d1 > step2):
                 baseline = (dates2[p] - dates1[p]).days
-                if baseline < 30:
-                    step_count_1month[d] += 1
-                elif baseline < 90:
-                    step_count_3month[d] += 1
-                elif baseline < 180:
-                    step_count_6month[d] += 1
+                if baseline < 1 * 30.5:
+                    step_count[0, d] += 1
+                elif baseline < 2 * 30.5:
+                    step_count[1, d] += 1
+                elif baseline < 3 * 30.5:
+                    step_count[2, d] += 1
+                elif baseline < 4 * 30.5:
+                    step_count[3, d] += 1
+                elif baseline < 5 * 30.5:
+                    step_count[4, d] += 1
+                elif baseline < 6 * 30.5:
+                    step_count[5, d] += 1
+                elif baseline < 7 * 30.5:
+                    step_count[6, d] += 1
+                elif baseline < 8 * 30.5:
+                    step_count[7, d] += 1
+                elif baseline < 9 * 30.5:
+                    step_count[8, d] += 1
+                elif baseline < 10 * 30.5:
+                    step_count[9, d] += 1
+                elif baseline < 11 * 30.5:
+                    step_count[10, d] += 1
+                elif baseline < 12 * 30.5:
+                    step_count[11, d] += 1
                 else:
-                    step_count_more[d] += 1
+                    step_count[12, d] += 1
 
     all_dates = np.array(all_dates)
     inter = all_dates[:-1] + (all_dates[:-1] - all_dates[1:]) / 2
-    cum1 = step_count_1month
-    cum2 = cum1 + step_count_3month
-    cum3 = cum2 + step_count_6month
-    cumtot = cum3 + step_count_more
+    cumtot = np.sum(step_count, axis=0)
     cmap = cm.navia
-    plt.fill_between(inter, cum1, color=cmap(0), alpha=0.6, label='<1month')
-    plt.fill_between(inter, cum2, cum1, color=cmap(1/6), alpha=0.6, label='<3months')
-    plt.fill_between(inter, cum3, cum2, color=cmap(2/6), alpha=0.6, label='<6months')
-    plt.fill_between(inter, cumtot, cum3, color=cmap(1/2), alpha=0.6, label='>6months')
-    plt.plot(inter, cumtot, color='k')
-    plt.title("Pair Coverage")
-    plt.xlabel("Date Interval")
-    plt.legend()
+    bounds = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    # colors = [cmap(k) for k in bounds]
+    colors = [cmap(k / 12) for k in range(13)]
+    bottom = np.zeros(len(all_dates) - 1)
+    fig, ax = plt.subplots()
+    for k in range(13):
+        cum = np.sum(step_count[:k + 1], axis=0)
+        ax.fill_between(inter, cum, bottom, color=colors[k])
+        bottom = cum
+    ax.plot(inter, cumtot, color='k')
+    ax.set_title("Pair Coverage")
+    ax.set_xlabel("Date Interval Centered")
+    ax.set_ylabel("Pair Count")
+    
+    divider = make_axes_locatable(ax)
+    c = divider.append_axes("right", size="5%", pad=0.05)
+    norm = mpl.colors.BoundaryNorm(bounds, cmap.N, extend="max")
+    plt.colorbar(mpl.cm.ScalarMappable(norm=norm, cmap=cmap),
+             cax=c, orientation='vertical',
+             label="Temporal Baselines (month)",
+             fraction=0.02, pad=0.04)
+
     plt.tight_layout()
+    if save is not None:
+        plt.savefig(os.path.join(save, os.path.splitext(table) + "_connectivity.pdf", dpi=300))
     plt.show()

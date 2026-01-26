@@ -40,10 +40,10 @@ if arguments["--infile"] == None:
     infile = 'depl_cumule_flat'
 else :
     infile = arguments["--infile"]
-if arguments["--infile"] == None:
+if arguments["--lectfile"] == None:
     lectfile = 'lect_ts.in'
 else :
-    lectfile = arguments["--infile"]
+    lectfile = arguments["--lectfile"]
 
 #ds = gdal.OpenEx(infile, allowed_drivers=["ROI_PAC"])
 #print(ds.RasterXSize)

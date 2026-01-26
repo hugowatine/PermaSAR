@@ -96,7 +96,7 @@ mask = np.array([p not in only_in_coeff for p in coeff_pairs])
 date1 = date1[mask]
 date2 = date2[mask]
 coeff = coeff[mask]
-RMSintefero = np.array([RMS_pairs[p] for p in coeff_pairs[mask]])
+RMSinterfero = np.array([RMS_pairs[p] for p in coeff_pairs[mask]])
 
 datedec1 = np.array(date2dec(date1))
 datedec2 = np.array(date2dec(date2))
@@ -125,18 +125,22 @@ ax_left.set_title("Série temporelle")
 ax_left.legend()
 ax_left.grid(True)
 
-ax_right.plot(RMSintefero, abs(residual), 'ko')
+ax_right.plot(RMSinterfero, abs(residual), 'ko')
 ax_right.axhline(0, color='r', linestyle='--')
 ax_right.set_xlabel("RMS")
 ax_right.set_ylabel("Coeff - Coeff reconstruit")
 ax_right.set_title("Résidus")
 ax_right.grid(True)
 
+
+print(len(date1), len(date2), len(coeff), len(coeff_reconstruct), len(residual), len(RMSinterfero))
+sys.exit()
 out = np.column_stack([date1, date2, coeff, coeff_reconstruct, residual, RMSinterfero])
 np.savetxt(
     "coeff_residuals.txt",
     out,
-    fmt="%8d %8d % .6e % .6e % .6e % .6e",
+    fmt="%8d %8d % .6f % .6f % .6f % .6f",
+    header="date1 date2 coeff coeff_reconstruct residual RMS",
     comments=""
 )
 

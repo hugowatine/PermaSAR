@@ -46,6 +46,7 @@ import glob
 import re
 import subprocess
 from osgeo import gdal, osr, gdalconst
+gdal.UseExceptions()
 
 try:
     from nsbas import docopt
@@ -305,8 +306,10 @@ if 7 in step :
 # for d in int_*_*; do [ -d "$d" ] || continue; for f in "$d"/*_mask_*.cor; do [ -e "$f" ] || continue; mv "$f" "${f/_mask/}"; done; done
 # for d in int_*_*; do [ -d "$d" ] || continue; for f in "$d"/*_mask_*.cor.rsc; do [ -e "$f" ] || continue; mv "$f" "${f/_mask/}"; done; done
 
-
-
+# for d in int_*_*; do [ -d "$d" ] || continue; for f in "$d"/*.cor; do [ -e "$f" ] || continue; mv "$f" "$d/coh_$(basename "$f")"; done; done
+# for d in int_*_*; do [ -d "$d" ] || continue; for f in "$d"/*.cor.rsc; do [ -e "$f" ] || continue; mv "$f" "$d/coh_$(basename "$f")"; done; done
+        
+#for f in filtSWc_*_mask_*rlks.int; do [ -e "$f" ] || continue cp "$f" "${f/_mask_/_mask_testwmedian_}" done;
 
 # 8- Extract the seasonal amplitude from the row flatsim cube and flat it
 
@@ -395,6 +398,7 @@ if 9 in step:
             sys.exit(1)
 
         print(f"9. Please open CNES_Net_geo_8rlks.tiff (band 4) and CNES_TCoh_radar_2rlks to found a new referecence site (200x200) and seed for unwarping (1x1) ")
+        # scp hugo@193.54.29.81:/data2/FLATSIM/WestTibet/D063_sud/NSBAS_TS-PKG_S1_TIBET-HIM-D063SUD-VV-2014-2022_IW123_2014-10-22_2022-05-25/CNES_Net_geo_8rlks.tiff /Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/D063_sud/
 
         with open(nsbas_col_proc, "r+") as f:
             lines = f.readlines()
@@ -492,6 +496,7 @@ if 11 in step:
         prefix = 'CNES_InW_geo_'
         suffix = '_sd_era_mask'
         nproc=20
+        #model = os.path.relpath(os.path.join(drow, 'stack_1001_0401_lowRMS_mask_HP158_interpolate_LP2_inverted.tiff'), start=track_path)
         model = os.path.relpath(os.path.join(drow, 'ampwt_coeff_mask_filter400_interpolate_filter2_quad.tiff'), start=track_path)
         #model = os.path.relpath(os.path.join(drow, 'lin_model_filter400_interpolate_filter2_quad.tif'), start=track_path)
 
@@ -531,7 +536,7 @@ if 12 in step:
             sys.exit(1)
         
         try:
-            subprocess.run(f"/home/hugo/PermaSAR/TimeSeries/invert_phi.py --datesfile={baseline} --input={input} --output={output} --plot", shell=True, check=True)
+            subprocess.run(f"/home/hugo/PermaSAR/TimeSeries/invert_phi.py --datesfile={baseline} --input={input} --output={output} --rad2mm=-1 --plot", shell=True, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error runing batch_flatsimcheckcoeff.py : {e}")
             sys.exit(1)
@@ -569,7 +574,7 @@ if 13 in step:
         nproc=20
 
         try:
-            subprocess.run(f"/home/hugo/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} -f", shell=True, check=True, cwd=track_path, stdout=subprocess.DEVNULL)
+            subprocess.run(f"/home/hugo/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc}", shell=True, check=True, cwd=track_path, stdout=subprocess.DEVNULL)
         except subprocess.CalledProcessError as e:
             print(f"Error runing nsb_filtflatunw.py : {e}")
             sys.exit(1)
@@ -598,7 +603,14 @@ if 14 in step:
         job = 'filterSW'
         prefix = 'col_'
         suffix = '_sd_era_mask_nomodel'
+        #suffix = '_sd_era_mask'
         nproc=20
+
+        try:
+            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_col2cor.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
+        except subprocess.CalledProcessError as e:
+            print(f"Error running comparison script: {e}")
+            sys.exit(1)
 
         try:
             subprocess.run(f"/home/hugo/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} -f", shell=True, check=True, cwd=track_path)
@@ -645,7 +657,7 @@ if 15 in step:
 
         with open(readme_path, 'a') as f:
             f.write("\nStep 15: Unwarp .int\n")
-            f.write(f"~PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} --cutfile={cutfile} -f\n")
+            f.write(f"~/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} --cutfile={cutfile} -f\n")
 
 # 16- Add back the model
 if 16 in step:
@@ -683,7 +695,7 @@ if 16 in step:
 
         with open(readme_path, 'a') as f:
             f.write("\nStep 16: Add back the model \n")
-            f.write(f"~PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} --model={model} -f\n")
+            f.write(f"~/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} --model={model} -f\n")
 
 # 17- Removes linear ramps (r + az) and referencing the IFGs
 if 17 in step:
@@ -707,7 +719,7 @@ if 17 in step:
         nsbas_col_proc = os.path.join(daux, 'nsbas_col.proc')
         list_int = 'filtered_inter_pair.rsc'
         prefix = 'filt_col_'
-        suffix = '_sd_era_mask'
+        suffix = '_sd_era_mask_cohcol'
         #suffix = '_sd_era'
         flat = 3
         nproc=10
@@ -736,7 +748,89 @@ if 17 in step:
 
         with open(readme_path, 'a') as f:
             f.write("\nStep 17: Removes linear ramps (r + az) and referencing the IFGs \n")
-            f.write(f"~PermaSAR/Flatsim/flatsim_invert_ramp_topo_unw.py --ref_zone={ref_zone} --int_list={list_int} --int_path={dint} --prefix={prefix} --suffix={suffix} --flat={flat} --tsinv={tsinv} --estim={estim} --perc={perc} --suffix_output={suffix_output} --ref={ref} --cohpixel={cohpixel} --threshold_coh={threshold_coh} --rlook={rlook} --nproc={nproc}\n")
+            f.write(f"~/PermaSAR/Flatsim/flatsim_invert_ramp_topo_unw.py --ref_zone={ref_zone} --int_list={list_int} --int_path={dint} --prefix={prefix} --suffix={suffix} --flat={flat} --tsinv={tsinv} --estim={estim} --perc={perc} --suffix_output={suffix_output} --ref={ref} --cohpixel={cohpixel} --threshold_coh={threshold_coh} --rlook={rlook} --nproc={nproc}\n")
+
+# 18- Generate the mask
+if 18 in step:
+    drow_dirs = [d for d in glob.glob(os.path.join(track_path, 'NSB*')) if os.path.isdir(d)]
+    dts_dirs = [d for d in glob.glob(os.path.join(track_path, 'ts_corr_bt_bpAPS')) if os.path.isdir(d)]
+
+    if not dts_dirs:
+        print("17. No ts_corr_bt_bpAPS/ directory found")
+        sys.exit(1)
+    elif not drow_dirs:
+        print("17. No ROW NSBAS directory found")
+        sys.exit(1)
+    else : 
+        drow = drow_dirs[0]
+        dts = dts_dirs[0]
+        
+        track_name = dts.split('/')[-2]
+
+        # RMS
+        print("generate RMSpixel.tiff")
+        try:
+            subprocess.run(f"~/PermaSAR/Tools/r4totif.py --infile=RMSpixel --outfile={track_name}_RMSpixel.tiff --ref_file=../{drow.split('/')[-1]}/CNES_MV-LOS_geo_8rlks.tiff", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+            subprocess.run(f"gdal_edit.py -a_nodata 0.0 {track_name}_RMSpixel.tiff", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"Error runing r4totif.py : {e}")
+            sys.exit(1)
+        
+        # biais
+        print("generate CNES_Net_geo_8rlks_bias_mask.tiff")
+        try:
+            subprocess.run(f"gdal_translate -b 5 CNES_Net_geo_8rlks.tiff {track_name}_CNES_Net_geo_8rlks_bias.tiff", shell=True, check=True, cwd=drow, stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"Error runing gdal_translate : {e}")
+            sys.exit(1)
+        try:
+            subprocess.run(f"~/PermaSAR/Tools/raster_maskshp.py --raster={track_name}_CNES_Net_geo_8rlks_bias.tiff --shapefile=../../TP_shapefile/DBATP_Polygon.shp --output={track_name}_CNES_Net_geo_8rlks_bias_mask.tiff", shell=True, check=True, cwd=drow, stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"Error runing raster_maskshp : {e}")
+            sys.exit(1)
+        try:
+            subprocess.run(f"cp {track_name}_CNES_Net_geo_8rlks_bias_mask.tiff ../ts_corr_bt_bpAPS/", shell=True, check=True, cwd=drow)
+        except subprocess.CalledProcessError as e:
+            print(f"Error runing cp : {e}")
+            sys.exit(1)
+        # gdal_calc.py -A CNES_Net_geo_8rlks_bias_mask.tiff --outfile=CNES_Net_geo_8rlks_bias_mask_mmyr.tiff --calc="(A*365*(-4.413824938174363)/24).astype('float32')" --overwrite
+        # gdal_calc.py -A CNES_Net_geo_8rlks_bias.tiff --outfile=CNES_Net_geo_8rlks_bias_mask.tiff --calc="((A <= 0.015) & (A >= -0.015)).astype('uint8')" --overwrite
+
+        # Mean miscolsure
+        print("generate mean_misclosure.tiff")
+        try:
+            subprocess.run(f"~/PermaSAR/Flatsim/flatsim_compute_mean_misclosure.py --output={track_name}_mean_misclosure --weight", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"Error runing gdal_translate : {e}")
+            sys.exit(1)
+
+        # bt moyenne
+        print("generate average_bt.tiff")
+        try:
+            subprocess.run("~/PermaSAR/Tools/count_unw_pixel.py", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"Error runing count_unw_pixel.py : {e}")
+            sys.exit(1)
+        try:
+            subprocess.run(f"~/PermaSAR/Tools/r4totif.py --infile=average_bt.r4 --outfile={track_name}_average_bt.tiff --ref_file=../{drow.split('/')[-1]}/CNES_MV-LOS_geo_8rlks.tiff", shell=True, check=True, cwd=dts,  stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"Error runing r4totif.py : {e}")
+            sys.exit(1)
+
+        ref = gdal.Open(f"{dts}/{track_name}_RMSpixel.tiff")
+        target = gdal.Open(f"{dts}/{track_name}_mean_misclosure.tiff", gdal.GA_Update) 
+        target.SetProjection(ref.GetProjection())
+        target.SetGeoTransform(ref.GetGeoTransform())
+        target = None
+        ref = None
+        # gdal_calc.py -A average_bt.tiff --outfile=average_bt_mask.tiff --calc="(A > 0.4).astype('uint8')" --overwrite
+        
+        # Telechargement 
+        # scp hugo@193.54.29.81:/data2/FLATSIM/WestTibet/D121_sud/ts_corr_bt_bpAPS/D121_sud_*.tiff /Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/D121_sud/
+
+        # with open(readme_path, 'a') as f:
+        #     f.write("\nStep 17: Removes linear ramps (r + az) and referencing the IFGs \n")
+        #     f.write(f"~PermaSAR/Flatsim/flatsim_invert_ramp_topo_unw.py --ref_zone={ref_zone} --int_list={list_int} --int_path={dint} --prefix={prefix} --suffix={suffix} --flat={flat} --tsinv={tsinv} --estim={estim} --perc={perc} --suffix_output={suffix_output} --ref={ref} --cohpixel={cohpixel} --threshold_coh={threshold_coh} --rlook={rlook} --nproc={nproc}\n")
 
 
 #../batch_unw_nodata0.py --path=./INTERFERO/ --list=filtered_inter_pair.rsc --prefix=filt_col_ --suffix=_sd_era_mask_corr_8rlks.unw
@@ -750,6 +844,8 @@ if 17 in step:
 # invers_pixel < input_inv_send
 #../../quality_card_int.py
             
+# RELANCER TRAITEMENT RAPIDEMENT
+# ~/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix=CNES_InW_geo_ --suffix=_sd_era_mask_testwmedian_nomodel --jobs=colin/filterSW/unwrapping/add_model_back --model=NSBAS_TS-PKG_S1_TIBET-HIM-A158CENTRE-VV-2014-2022_IW123_2014-10-16_2022-05-31/ampwt_coeff_mask_filter400_interpolate_filter2_quad.tiff --list_int=filtered_inter_pair.rsc 20190417/nsbas_col.proc --nproc=20
 
 
 #nsb_filtflatunw.py --prefix=CNES_InW_geo_ --suffix=_sd_era --jobs=filterSW --list_int=filtered_inter_pair.rsc ./20190407/nsbas_col.p
@@ -803,7 +899,9 @@ if 17 in step:
 # ~/PermaSAR/Flatsim/flatsim_quality_listdate.py --list_date=list_dates --aps_date=../rms_corr_modif2date.txt --output=list_dates_quality.txt
 # cp list_dates_quality.txt list_dates
 # invers_pixel < input_inv_send
-        
+
+
+# preview int or unw  
 # gdal_translate -b 2 CNES_DEM_radar_8rlks.tiff CNES_DEM_radar_8rlks_b2.tiff
 # ~/PermaSAR/Tools/flatsim2unw.py --ifg=CNES_DEM_radar_8rlks_b2.tiff --coh=CNES_DEM_radar_8rlks_b2.tiff
 # nsb_geocode.pl CNES_Lut_geo_8rlks.trans CNES_DEM_radar_8rlks_b2.unw CNES_DEM_geo_8rlks.unw
@@ -821,6 +919,10 @@ if 17 in step:
 # gdal_calc.py -A average_bt.tiff --outfile=average_bt_mask.tiff --calc="(A > 0.4).astype('uint8')" --overwrite
             
 # gdal_translate -b 5 CNES_Net_geo_8rlks.tiff CNES_Net_geo_8rlks_bias.tiff
-# cp CNES_Net_geo_8rlks_bias.tiff ../ts_corr_bt_bpAPS/
+# raster_maskshp.py --raster=CNES_Net_geo_8rlks_bias.tiff --shapefile=../../TP_shapefile/DBATP_Polygon.shp --output=CNES_Net_geo_8rlks_bias_mask.tiff
+# gdal_calc.py -A CNES_Net_geo_8rlks_bias_mask.tiff --outfile=CNES_Net_geo_8rlks_bias_mask_mmyr.tiff --calc="(A*365*(-4.413824938174363)/24).astype('float32')" --overwrite
+# cp CNES_Net_geo_8rlks_bias_mask_mmyr.tiff ../ts_corr_bt_bpAPS/
 # gdal_calc.py -A CNES_Net_geo_8rlks_bias.tiff --outfile=CNES_Net_geo_8rlks_bias_mask.tiff --calc="((A <= 0.015) & (A >= -0.015)).astype('uint8')" --overwrite
 
+
+# retirer la tecto

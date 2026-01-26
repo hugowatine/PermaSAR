@@ -4,7 +4,7 @@
 Model coefficient estimation and removal for wrapped interferograms
 
 Usage:
-    flatten_stack.py estimate <phase_filt> <model> [--outfile=<outfile>] [--nreg=<nreg>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot_reg=<yes/no>] [--plot=<yes/no>] [--weightmedian=<yes/no>]
+    flatten_stack.py estimate <phase_filt> <model> [--outfile=<outfile>] [--nreg=<nreg>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot_reg=<yes/no>] [--plot=<yes/no>] [--weightmedian=<yes/no>] [--method=<name>]
     flatten_stack.py add <unwrapped> <model> --coeff=<coeff> [--outfile=<outfile>]
     flatten_stack.py remove <phase> <model> --coeff=<coeff> [--outfile=<outfile>]
     flatten_stack.py 2model <phase> <phase_filt> <model1> <model2> [--outfile=<outfile>] [--nreg=<float>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_model2=<float>] [--mask_center2=<yes/no>] [--thresh_std_model2=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot=<yes/no>] [--plot_reg=<yes/no>]
@@ -27,10 +27,11 @@ Options:
     thresh_std_model    Minimal standard deviation within a window for estimation (default: 0.3)
     thresh_std_model2   Minimal standard deviation for model2 in a window (default: 0.3)
     thresh_min_pixel    Minimal percent of pixel per windows for estimation (default: 10)
-    cyclmax             Maximum number of phase cycle (default: 3)
+    cyclmax             Maximum number of phase cycle (default: 5)
     plot                plot intermediate results (default: no)
     plot_reg            plot each phase model relation per region (default: no)
     weightmedian        if yes do a weighted median based on the increase of coherence before and after removing the model (default: no)
+    method              Choose the minimisation method used: Grid search (gs), minimize (mini) (default: scipy.optimize.minimize)
 """
 
 import numpy as np
@@ -82,23 +83,36 @@ def plot_reg_model2(alpha, model1_region, beta, model2_region, phi_filt_region):
         pass
 
 def plot_final(list_coeff, list_coh, model1_copy):
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(12, 7))
+    fig, axes = plt.subplots(2, 3, figsize=(14, 10))
+    im1 = axes[0, 0].imshow(list_coeff, cmap='RdBu_r',
+                            vmin=-cyclmax, vmax=cyclmax)
+    axes[0, 0].set_title('Coefficients')
+    axes[0, 0].axis('off')
+    plt.colorbar(im1, ax=axes[0, 0], fraction=0.046, pad=0.04)
 
-    im1 = ax1.imshow(list_coeff, cmap='RdBu_r',
-                vmax=cyclmax,
-                vmin=-cyclmax)
-    ax1.set_title('Coefficients')
-    plt.colorbar(im1, ax=ax1, fraction=0.046, pad=0.04)
-    
-    im2 = ax2.imshow(list_coh, cmap='viridis')
-    ax2.set_title('Coherence')
-    plt.colorbar(im2, ax=ax2, fraction=0.046, pad=0.04)
+    im2 = axes[0, 1].imshow(list_coh, cmap='viridis')
+    axes[0, 1].set_title('Coherence')
+    axes[0, 1].axis('off')
+    plt.colorbar(im2, ax=axes[0, 1], fraction=0.046, pad=0.04)
 
-    im3 = ax3.imshow(model1_copy, cmap='RdBu_r',
-                        vmin=np.nanpercentile(model1_copy, 2),
-                        vmax=np.nanpercentile(model1_copy, 98))
-    ax3.set_title('Model')
-    plt.colorbar(im3, ax=ax3, fraction=0.046, pad=0.04)
+    im3 = axes[0, 2].imshow(
+        model1_copy, cmap='RdBu_r',
+        vmin=np.nanpercentile(model1_copy, 2),
+        vmax=np.nanpercentile(model1_copy, 98)
+    )
+    axes[0, 2].set_title('Model')
+    axes[0, 2].axis('off')
+    plt.colorbar(im3, ax=axes[0, 2], fraction=0.046, pad=0.04)
+
+    #x = model1_copy.ravel()
+    #y = list_coh.ravel()
+    #mask = np.isfinite(x) & np.isfinite(y)
+
+    #axes[1, :].scatter(x[mask], y[mask], s=5, alpha=0.5)
+    #axes[1, :].set_xlabel('Model 1')
+    #axes[1, :].set_ylabel('Coherence')
+    #axes[1, :].set_title('Coherence vs Model 1')
+    #axes[1, :].grid(True, alpha=0.3)
 
     plt.tight_layout()
     plt.show()
@@ -295,13 +309,13 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
     ny = model1_split.shape[0]
     nx = model1_split.shape[1]
 
+    list_coh = np.full((ny, nx), np.nan)
+    list_model_mean = np.full((ny, nx), np.nan)
     if model2 is None:
         list_coeff = np.full((ny, nx), np.nan)
-        list_coh = np.full((ny, nx), np.nan)
     else:
         list_alpha = np.full((ny, nx), np.nan)
         list_beta = np.full((ny, nx), np.nan)
-        list_coh = np.full((ny, nx), np.nan)
 
     if kwargs['weightmedian'] == 'yes':
         list_coh_initial = np.full((ny, nx), np.nan)
@@ -326,58 +340,119 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
             
             #### THINK about what to do if the std of model 2 is low ###
             
+            if method == 'mini':
+                if model2 is None:
+                    res = minimize(misfit_single, x0=[0.0], args=(phi_filt_region, model1_region), 
+                                bounds=[(-cyclmax, cyclmax) ] )
+                    coeff = res.x[0]
+                    coh = np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j * (coeff * model1_region ))))
+                    
+                    if coh > kwargs['thresh_cohreg']:
+                        list_coeff[i,j] = coeff
+                        list_coh[i,j] = coh 
+                        list_model_mean[i, j] = np.nanmean(model1_region)
 
-            if model2 is None:
-                res = minimize(misfit_single, x0=[0.0], args=(phi_filt_region, model1_region), 
-                            bounds=[(-cyclmax, cyclmax) ] )
-                coeff = res.x[0]
-                coh = np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j * (coeff * model1_region ))))
-                
+                    if kwargs['plot_reg'] == 'yes':
+                        plot_reg_model1(model1_region,phi_filt_region, list_coeff, list_coh, i, j)
+                    
+                else :
+                    model2_region = model2_blocks[i, j]
+                    #kwargs['thresh_std_model2'] = 0.0
+                    if np.nanstd(model2_region) < kwargs['thresh_std_model2']:
+                        continue
+
+                    res = minimize(misfit_double, x0=[0.0, 0.0], args=(phi_filt_region, model1_region, model2_region),
+                                bounds=[(-cyclmax, cyclmax), (-cyclmax, cyclmax)])
+                    alpha = float(res.x[0]); beta = float(res.x[1])
+                    coh = np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j * (alpha * model1_region + beta * model2_region))))
+                    if coh > kwargs['thresh_cohreg']:
+                        list_alpha[i, j] = alpha
+                        list_beta[i, j] = beta
+                        list_coh[i, j] = coh
+                        list_model_mean[i, j] = np.nanmean(model1_region)
+
+                    if kwargs['plot_reg'] == 'yes':
+                        plot_reg_model2(alpha, model1_region, beta, model2_region, phi_filt_region)
+            
+            if method == "gs":
+                cs = np.linspace(-cyclmax, cyclmax, kwargs.get('n_gs', 50))
+                cohs = []
+                for c in cs:
+                    coh = np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j * (c * model1_region))))
+                    cohs.append(coh)
+
+                cohs = np.array(cohs)
+                idx = np.nanargmax(cohs)
+                coeff = cs[idx]
+                coh = cohs[idx]
+
                 if coh > kwargs['thresh_cohreg']:
-                    list_coeff[i,j] = coeff
-                    list_coh[i,j] = coh 
-
-                if kwargs['plot_reg'] == 'yes':
-                    plot_reg_model1(model1_region,phi_filt_region, list_coeff, list_coh, i, j)
-                   
-            else :
-                model2_region = model2_blocks[i, j]
-                #kwargs['thresh_std_model2'] = 0.0
-                if np.nanstd(model2_region) < kwargs['thresh_std_model2']:
-                    continue
-
-                res = minimize(misfit_double, x0=[0.0, 0.0], args=(phi_filt_region, model1_region, model2_region),
-                               bounds=[(-cyclmax, cyclmax), (-cyclmax, cyclmax)])
-                alpha = float(res.x[0]); beta = float(res.x[1])
-                coh = np.abs(np.nanmean(np.exp(1j * phi_filt_region) * np.exp(-1j * (alpha * model1_region + beta * model2_region))))
-                if coh > kwargs['thresh_cohreg']:
-                    list_alpha[i, j] = alpha
-                    list_beta[i, j] = beta
+                    list_coeff[i, j] = coeff
                     list_coh[i, j] = coh
 
                 if kwargs['plot_reg'] == 'yes':
-                    plot_reg_model2(alpha, model1_region, beta, model2_region, phi_filt_region)
+                    #plot_reg_model1(model1_region, phi_filt_region, list_coeff, list_coh, i, j)
+                    plt.figure(figsize=(6, 4))
+                    plt.plot(cs, cohs, lw=1)
+                    plt.axvline(coeff, linestyle='--', label=f'c = {coeff:.3f}')
+                    plt.axhline(coh, linestyle=':', label=f'coh = {coh:.3f}')
+
+                    plt.xlabel('Coefficient c')
+                    plt.ylabel('Cohérence')
+                    plt.title(f'Grid search – pixel ({i},{j})')
+                    plt.legend()
+                    plt.tight_layout()
+                    plt.show()
+
         
     if model2 is None:
         if kwargs['weightmedian'] == 'no':
             med = np.nanmedian(list_coeff)
         else:
-            mask = ~np.isnan(list_coh_initial) & ~np.isnan(list_coh)
-            weights = np.zeros_like(list_coeff)
-            valid_mask = mask & (list_coh_initial != 0)
-            weights[valid_mask] = (list_coh[valid_mask] - list_coh_initial[valid_mask]) / list_coh_initial[valid_mask]
-            zero_mask = mask & (list_coh_initial == 0)
-            weights[zero_mask] = list_coh[zero_mask] - list_coh_initial[zero_mask]
-            weights = np.abs(weights)
+            mask = np.isfinite(list_coh_initial) & np.isfinite(list_coh)
+
+            delta = list_coh - list_coh_initial
+            weights = np.zeros_like(delta)
+
+            eps = 0.05
+            valid = mask & (list_coh_initial > eps)
+
+            weights[valid] = delta[valid] / list_coh_initial[valid]
+            weights[weights < 0] = 0     # on garde seulement les améliorations
+
+            #weights = weights**2         # accentuer les vraies contributions
+
             if np.sum(weights) > 0:
-                weights = weights / np.sum(weights)
+                weights /= np.sum(weights)
             else:
-                weights = np.ones_like(weights) / len(weights)
+                weights[:] = 1.0 / weights.size
 
             med = weighted_median(list_coeff, weights)
 
+            plt.figure(figsize=(6,4))
+            plt.scatter(list_coeff.ravel(), weights.ravel(), c=list_model_mean.ravel() ,s=5, alpha=0.4)
+            cbar = plt.colorbar()
+            cbar.set_label("Mean model value (window)")
+            plt.xlabel("Coefficient")
+            plt.ylabel("Weight")
+            plt.grid()
+            #plt.show()
+
         if kwargs['plot'] == 'yes':
+            plt.hist(list_coeff[~np.isnan(list_coeff)], bins=50)
+            plt.axvline(np.nanmedian(list_coeff), color='r', label='median')
+            plt.legend()
+            plt.show()
             plot_final(list_coeff, list_coh, model1_copy)
+
+        plt.figure(figsize=(6,4))
+        plt.scatter(list_coeff.ravel(), list_coh.ravel(), c=list_model_mean.ravel() ,s=5, alpha=0.4)
+        cbar = plt.colorbar()
+        cbar.set_label("Mean model value (window)")
+        plt.xlabel("Coefficient")
+        plt.ylabel("Coherence")
+        plt.grid()
+        #plt.show()
 
         print(f'--> coeff median: {med:.3f}')
         return med
@@ -395,37 +470,51 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
 
         # === PLOTS ==========================================================
         if kwargs['plot'] == 'yes':
+            print("coucou")
+            fig, axes = plt.subplots(2, 5, figsize=(15, 10))
 
-            fig, axes = plt.subplots(1, 5, figsize=(15, 6))
+            # === MAPS ===
+            im0 = axes[0, 0].imshow(list_alpha, cmap='RdBu_r',
+                                    vmin=-cyclmax, vmax=cyclmax)
+            axes[0, 0].set_title("Alpha")
+            axes[0, 0].axis('off')
+            plt.colorbar(im0, ax=axes[0, 0], fraction=0.046, pad=0.04)
 
-            # α map
-            im0 = axes[0].imshow(list_alpha, cmap='RdBu_r',
-                                 vmin=-cyclmax, vmax=cyclmax)
-            axes[0].set_title("Alpha coefficient")
-            plt.colorbar(im0, ax=axes[0], fraction=0.046, pad=0.04)
+            im1 = axes[0, 1].imshow(list_beta, cmap='RdBu_r',
+                                    vmin=-cyclmax, vmax=cyclmax)
+            axes[0, 1].set_title("Beta")
+            axes[0, 1].axis('off')
+            plt.colorbar(im1, ax=axes[0, 1], fraction=0.046, pad=0.04)
 
-            # β map
-            im1 = axes[1].imshow(list_beta, cmap='RdBu_r',
-                                 vmin=-cyclmax, vmax=cyclmax)
-            axes[1].set_title("Beta coefficient")
-            plt.colorbar(im1, ax=axes[1], fraction=0.046, pad=0.04)
+            im2 = axes[0, 2].imshow(list_coh, cmap='viridis')
+            axes[0, 2].set_title("Coherence")
+            axes[0, 2].axis('off')
+            plt.colorbar(im2, ax=axes[0, 2], fraction=0.046, pad=0.04)
 
-            # Coherence
-            im2 = axes[2].imshow(list_coh, cmap='viridis')
-            axes[2].set_title("Coherence")
-            plt.colorbar(im2, ax=axes[2], fraction=0.046, pad=0.04)
+            im3 = axes[0, 3].imshow(model1_copy, cmap='RdBu_r',
+                                    vmin=np.nanpercentile(model1_copy, 2),
+                                    vmax=np.nanpercentile(model1_copy, 98))
+            axes[0, 3].set_title("Model 1")
+            axes[0, 3].axis('off')
+            plt.colorbar(im3, ax=axes[0, 3], fraction=0.046, pad=0.04)
 
-            im3 = axes[3].imshow(model1_copy, cmap='RdBu_r',
-                             vmin=np.nanpercentile(model1_copy, 2),
-                             vmax=np.nanpercentile(model1_copy, 98))
-            axes[3].set_title('Model 1')
-            plt.colorbar(im3, ax=axes[3], fraction=0.046, pad=0.04)
+            im4 = axes[0, 4].imshow(model2_copy, cmap='RdBu_r',
+                                    vmin=np.nanpercentile(model2_copy, 2),
+                                    vmax=np.nanpercentile(model2_copy, 98))
+            axes[0, 4].set_title("Model 2")
+            axes[0, 4].axis('off')
+            plt.colorbar(im4, ax=axes[0, 4], fraction=0.046, pad=0.04)
 
-            im4 = axes[4].imshow(model2_copy, cmap='RdBu_r',
-                             vmin=np.nanpercentile(model2_copy, 2),
-                             vmax=np.nanpercentile(model2_copy, 98))
-            axes[4].set_title('Model 2')
-            plt.colorbar(im4, ax=axes[4], fraction=0.046, pad=0.04)
+            # === SCATTER ===
+            x = model1_split.ravel()
+            y = list_coh.ravel()
+            mask = np.isfinite(x) & np.isfinite(y)
+
+            axes[1, :].scatter(x[mask], y[mask], s=5, alpha=0.5)
+            axes[1, :].set_xlabel('Model 1')
+            axes[1, :].set_ylabel('Coherence')
+            axes[1, :].set_title('Coherence vs Model 1')
+            axes[1, :].grid(alpha=0.3)
 
             plt.tight_layout()
             plt.show()
@@ -531,7 +620,7 @@ if __name__ == '__main__':
     
     # Additionnal parameters
     outfile = arg2value(arguments["--outfile"], str, 'nomodel')
-    nreg = arg2value(arguments["--nreg"], int, 28)
+    nreg = arg2value(arguments["--nreg"], int, 30)
     thresh_amp = arg2value(arguments["--thresh_amp"], float, 0.1)
     thresh_cohreg = arg2value(arguments["--thresh_cohreg"], float, 0.2)
     thresh_model = arg2value(arguments["--thresh_model"], float, 0.4)
@@ -539,12 +628,13 @@ if __name__ == '__main__':
     thresh_std_model = arg2value(arguments["--thresh_std_model"], float, 0.3)
     thresh_std_model2 = arg2value(arguments.get("--thresh_std_model2"), float, 0.3)
     thresh_min_pixel = arg2value(arguments["--thresh_min_pixel"], float, 10) # nb px (TODO en %)
-    cyclmax = arg2value(arguments["--cyclmax"], float, 3.)
+    cyclmax = arg2value(arguments["--cyclmax"], float, 5.)
     plot = arg2value(arguments["--plot"], str, 'no')
     plot_reg = arg2value(arguments["--plot_reg"], str, 'no')
     mask_center = arg2value(arguments["--mask_center"], str, 'no')
     mask_center2 = arg2value(arguments["--mask_center2"], str, 'no')
     weightmedian = arg2value(arguments["--weightmedian"], str, 'no')
+    method = arg2value(arguments["--method"], str, 'mini')
 
     if arguments["estimate"]:
         # Find the optimal coefficient of proportionality between the phase and the model
@@ -555,8 +645,7 @@ if __name__ == '__main__':
         if not (pfXsize == mXsize and pfYsize == mYsize):
             sys.exit("Error: input rasters (phase, phase_filt, model) do not have the same dimensions.")
         coeff = estimate_coeff(phase_filt, model, nreg=nreg, thresh_amp=thresh_amp, thresh_cohreg=thresh_cohreg,thresh_model=thresh_model, 
-                       thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, mask_center=mask_center)
-        print(coeff)
+                       thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, mask_center=mask_center,  weightmedian=weightmedian, method=method)
     elif arguments["add"]:
         # Add the model to an unwrapped file
         unwrapped, unwXsize, unwYsize = open_gdal(arguments["<unwrapped>"], band=2)
@@ -594,7 +683,7 @@ if __name__ == '__main__':
 
         # run flatten for two models (silent: no printing of coeff)
         former_flatten_stack(phase, phase_filt, model1, model2=model2, outfile=outfile, nreg=nreg, thresh_amp=thresh_amp, thresh_cohreg=thresh_cohreg, thresh_model=thresh_model, 
-                                thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, thresh_model2=thresh_model2, thresh_std_model2=thresh_std_model2, mask_center=mask_center, mask_center2=mask_center2, weightmedian=weightmedian)
+                                thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, thresh_model2=thresh_model2, thresh_std_model2=thresh_std_model2, mask_center=mask_center, mask_center2=mask_center2, weightmedian=weightmedian, method=method)
 
     else:
         # Remove a pattern from a wrapped signal, as in flatten_stack.f from NSBAS
@@ -606,5 +695,5 @@ if __name__ == '__main__':
             sys.exit("Error: input rasters (phase, phase_filt, model) do not have the same dimensions.")
         phase_minus_model = former_flatten_stack(phase, phase_filt, model,
                                 outfile=outfile, nreg=nreg, thresh_amp=thresh_amp, thresh_cohreg=thresh_cohreg, thresh_model=thresh_model, 
-                                thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, thresh_model2=None,  mask_center=mask_center, mask_center2=mask_center2, weightmedian=weightmedian)
+                                thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, thresh_model2=None,  mask_center=mask_center, mask_center2=mask_center2, weightmedian=weightmedian, method=method)
 
