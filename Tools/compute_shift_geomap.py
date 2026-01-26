@@ -38,19 +38,25 @@ X_STEP_geocoded = geocoded["X_STEP"]
 Y_FIRST_geocoded = geocoded["Y_FIRST"]
 Y_STEP_geocoded = geocoded["Y_STEP"]
 WIDTH_geocoded = geocoded["WIDTH"]
+LENGTH_geocoded = geocoded["FILE_LENGTH"]
 
 X_FIRST_geomap = geomap["X_FIRST"]
 X_STEP_geomap = geomap["X_STEP"]
 Y_FIRST_geomap = geomap["Y_FIRST"]
 Y_STEP_geomap = geomap["Y_STEP"]
 WIDTH_geomap = geomap["WIDTH"]
+LENGTH_geomap = geomap["FILE_LENGTH"]
 
 # Calcule des décalages
 XMIN = (X_FIRST_geocoded - X_FIRST_geomap) / X_STEP_geomap
 YMIN = (Y_FIRST_geocoded - Y_FIRST_geomap) / Y_STEP_geomap
-
 XMAX = ((X_FIRST_geocoded + WIDTH_geocoded * X_STEP_geocoded) - X_FIRST_geomap) / X_STEP_geomap
-YMAX = ((Y_FIRST_geocoded + WIDTH_geocoded * Y_STEP_geocoded) - Y_FIRST_geomap) / Y_STEP_geomap
+YMAX = ((Y_FIRST_geocoded + LENGTH_geocoded * Y_STEP_geocoded) - Y_FIRST_geomap) / Y_STEP_geomap
+
+#print(int(XMAX), int(YMAX))
+#XMAX = WIDTH_geomap - ((X_FIRST_geomap + WIDTH_geomap * X_STEP_geomap) - (X_FIRST_geocoded + WIDTH_geocoded * X_STEP_geocoded))/X_STEP_geomap 
+#YMAX = LENGTH_geomap - ((Y_FIRST_geomap + LENGTH_geomap * Y_STEP_geomap) - (Y_FIRST_geocoded + LENGTH_geocoded * Y_STEP_geocoded))/Y_STEP_geomap 
+#print(int(XMAX), int(YMAX))
 #print(Y_FIRST_geocoded)
 #print(Y_FIRST_geomap)
 #print(Y_FIRST_geocoded + WIDTH_geocoded * Y_STEP_geocoded)
