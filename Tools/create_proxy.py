@@ -30,7 +30,7 @@ for band in bands_normalized:
     resultat = band * resultat
 
 # normalisation
-resultat = resultat/np.nanmax(resultat)
+resultat = resultat/np.nanpercentile(resultat,98)
 
 # sauvegarde resultats
 dataset_ref = gdal.Open(fichiers_entree[0])
