@@ -1,7 +1,24 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+################################################################################
+# Author        : Simon DAOUT (CRPG)
+################################################################################
+
+"""compute_shift_geomap.py
+-------------------
+Extracts spatial metadata from a files and calculates the offsets required to align a geocoded product with a reference geomap.
+
+Usage: compute_shift_geomap.py [--geo=<file>] [--lut=<file>] [-h]
+
+Options:
+  --geo=<file>              Path to the geocoded metadata [default: CNES_CosENU_geo_8rlks.unw.rsc]
+  --lut=<file>              Path to the Lookup Tables metadata [default: CNES_Lut_geo_b2_8rlks.unw.rsc]
+  -h --help                 Show this screen and exit.
+"""
+
 import numpy as np
+import docopt
 
 def extraire_valeurs_rsc(fichier):
     valeurs = {}
@@ -20,8 +37,20 @@ def extraire_valeurs_rsc(fichier):
     return valeurs
 
 # Extraction .rsc
-geocoded = extraire_valeurs_rsc("CNES_CosENU_geo_8rlks.unw.rsc")
-geomap = extraire_valeurs_rsc("CNES_Lut_geo_b2_8rlks.unw.rsc")
+arguments = docopt.docopt(__doc__)
+
+if arguments["--geo"] ==  None:
+    geocoded_path = "CNES_CosENU_geo_8rlks.unw.rsc"
+else:
+    geocoded_path = arguments["--geo"]
+
+if arguments["--lut"] == None:
+    geomap_path = "CNES_Lut_geo_b2_8rlks.unw.rsc"
+else:
+    geomap_path = arguments["--lut"]
+
+geocoded = extraire_valeurs_rsc(geocoded_path)
+geomap = extraire_valeurs_rsc(geomap_path)
 
 # Affichage des .rsc
 print("Valeurs extraites du fichier geocoded :")
