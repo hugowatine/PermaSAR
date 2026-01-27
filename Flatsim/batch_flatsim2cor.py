@@ -10,12 +10,14 @@ batch_flatsim2cor.py
 Script pour lancer automatiquement flatsim2cor.py sur tous les dossiers int_YYYYMMDD_YYYYMMDD.
 
 Usage:
-    batch_flatsim2cor.py --path=<path> [--nproc=<n>] [--list_int=<file>]
+    batch_flatsim2cor.py --path=<path> [--suffix=<value>] [--prefix=<value>][--nproc=<n>] [--list_int=<file>]
     batch_flatsim2cor.py -h | --help
 
 Options:
     --path=<path>      Répertoire contenant les dossiers à traiter (obligatoire)
     --list_int=<file>  Fichier texte contenant "date1 date2" par ligne (optionnel)
+    --prefix=<value>   Prefix of the data at to be process $prefix$date1-$date2$suffix$ [default: 'CNES_Coh_geo']
+    --suffix=<value>   Suffix of the data at the starting of the processes $prefix$date1-$date2$suffix$ [default: '_8rlks.tiff']
     --nproc=<n>        Nombre de processus parallèles [default: 4]
     -h --help          Affiche ce message d'aide.
 """
@@ -28,13 +30,13 @@ from docopt import docopt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
-def process_subdir(flatsim_script, base_dir, subdir):
+def process_subdir(flatsim_script, base_dir, subdir, prefix, suffix):
     full_path = os.path.join(base_dir, subdir)
     print(f"\n📁 Traitement du dossier : {subdir}")
 
     coh = None
     for f in os.listdir(full_path):
-        if f.startswith("CNES_Coh_geo") and f.endswith("8rlks.tiff"):
+        if f.startswith(prefix) and f.endswith(suffix):
             coh = os.path.join(full_path, f)
 
     if coh:
@@ -74,6 +76,14 @@ def main():
     base_dir = arguments["--path"]
     list_int_file = arguments.get("--list_int", None)
     nproc = int(arguments.get("--nproc", 4))
+    if arguments['--suffix'] == None:
+        suffix = 'CNES_Coh_geo'
+    else:
+        suffix = arguments['--suffix']
+    if arguments['--prefix'] == None:
+        prefix = '_8rlks.tiff'
+    else:
+        prefix = arguments['--prefix']
 
     if base_dir is None:
         print("❌ Erreur : l'option --path est obligatoire.")
@@ -121,7 +131,7 @@ def main():
     # Exécution parallèle
     with ThreadPoolExecutor(max_workers=nproc) as executor:
         futures = [
-            executor.submit(process_subdir, flatsim_script, base_dir, subdir)
+            executor.submit(process_subdir, flatsim_script, base_dir, subdir, prefix, suffix)
             for subdir in subdirs_to_process
         ]
 

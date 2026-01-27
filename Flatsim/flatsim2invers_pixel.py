@@ -272,12 +272,12 @@ if 7 in step :
         nproc = 15
         print(f"7. Create .int, .cor, .unw")
         try:
-            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2int.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
+            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2int.py', f"--path={dint}", f"--nproc={nproc}", f"--suffix='mask_8rlks.tiff'"], check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error running comparison script: {e}")
             sys.exit(1)
         try:
-            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2cor.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
+            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2cor.py', f"--path={dint}", f"--nproc={nproc}", f"--suffix='mask_8rlks.tiff'"], check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error running comparison script: {e}")
             sys.exit(1)
@@ -606,11 +606,11 @@ if 14 in step:
         #suffix = '_sd_era_mask'
         nproc=20
 
-        try:
-            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_col2cor.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Error running comparison script: {e}")
-            sys.exit(1)
+        # try:
+        #     subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_col2cor.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
+        # except subprocess.CalledProcessError as e:
+        #     print(f"Error running comparison script: {e}")
+        #     sys.exit(1)
 
         try:
             subprocess.run(f"/home/hugo/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} -f", shell=True, check=True, cwd=track_path)
@@ -719,8 +719,8 @@ if 17 in step:
         nsbas_col_proc = os.path.join(daux, 'nsbas_col.proc')
         list_int = 'filtered_inter_pair.rsc'
         prefix = 'filt_col_'
-        suffix = '_sd_era_mask_cohcol'
-        #suffix = '_sd_era'
+        #suffix = '_sd_era_mask_cohcol'
+        suffix = '_sd_era_mask'
         flat = 3
         nproc=10
         estim = 'yes'
