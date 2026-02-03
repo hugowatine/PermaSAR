@@ -40,7 +40,7 @@ def process_subdir(flatsim_script, base_dir, subdir, ifg_start, ifg_end):
     for f in os.listdir(full_path):
         if f.startswith(ifg_start) and f.endswith(ifg_end):
             ifg = os.path.join(full_path, f)
-        elif f.startswith("CNES_Coh_geo") and f.endswith("mask_8rlks.tiff"):
+        elif f.startswith("CNES_Coh_geo") and f.endswith("_8rlks.tiff"):
             coh = os.path.join(full_path, f)
 
     if ifg and coh:
@@ -79,8 +79,8 @@ def main():
 
     base_dir = arguments["--path"]
     list_int_file = arguments.get("--list_int", None)
-    ifg_start = arguments.get("--prefix") or "CNES_InU_geo"
-    ifg_end = arguments.get("--suffix") or "_era_8rlks.tiff"
+    ifg_start = arguments.get("--prefix") or 'CNES_InU_geo'
+    ifg_end = arguments.get("--suffix") or '_era_8rlks.tiff'
     nproc = int(arguments.get("--nproc", 4))
 
     if base_dir is None:
