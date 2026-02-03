@@ -16,13 +16,14 @@ Usage:
 Options:
     --path=<path>      Répertoire contenant les dossiers à traiter (obligatoire)
     --list_int=<file>  Fichier texte contenant "date1 date2" par ligne (optionnel)
-    --suffix=<value>   Suffix of the data at the starting of the processes ...date1-date2$suffix$ [default: '_8rlks.tiff']
+    --suffix=<value>   Suffix of the data at the starting of the processes ...date1-date2$suffix$ 
     --nproc=<n>        Nombre de processus parallèles [default: 4]
     -h --help          Affiche ce message d'aide.
 """
 
 import os
 import re
+import shutil
 import subprocess
 import sys
 from docopt import docopt
@@ -35,6 +36,8 @@ def process_subdir(flatsim_script, base_dir, subdir, suffix):
 
     ifg = None
     coh = None
+    print(full_path)
+    print("Valeur de suffix :", repr(suffix))
     for f in os.listdir(full_path):
         if f.startswith("CNES_InW_geo") and f.endswith(suffix):
             ifg = os.path.join(full_path, f)
@@ -79,7 +82,7 @@ def main():
     list_int_file = arguments.get("--list_int", None)
     nproc = int(arguments.get("--nproc", 4))
     if arguments['--suffix'] == None:
-        suffix = 'CNES_Coh_geo'
+        suffix = "_8rlks.tiff"
     else:
         suffix = arguments['--suffix']
 
@@ -92,9 +95,10 @@ def main():
         print(f"❌ Erreur : le chemin '{base_dir}' n'existe pas ou n'est pas un dossier.")
         sys.exit(1)
 
-    flatsim_script = "flatsim2int.py"
+    path_dirs = os.environ["PATH"].split(":")
+    flatsim_script = shutil.which("flatsim2int.py")
+    
     pattern = re.compile(r"^int_\d{8}_\d{8}$")
-
     print(f"\n🔍 Recherche des dossiers dans : {base_dir}\n")
 
     # Dossiers existants
