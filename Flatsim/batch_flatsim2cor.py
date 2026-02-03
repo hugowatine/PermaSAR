@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 from docopt import docopt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 

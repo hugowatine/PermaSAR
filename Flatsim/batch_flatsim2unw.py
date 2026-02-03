@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 from docopt import docopt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -91,7 +92,9 @@ def main():
         print(f"❌ Erreur : le chemin '{base_dir}' n'existe pas ou n'est pas un dossier.")
         sys.exit(1)
 
-    flatsim_script = os.path.expanduser("~/PermaSAR/Tools/flatsim2unw.py")
+    path_dirs = os.environ["PATH"].split(":")
+    flatsim_script = shutil.which("flatsim2unw.py")
+    
     pattern = re.compile(r"^int_\d{8}_\d{8}$")
 
     print(f"\n🔍 Recherche des dossiers dans : {base_dir}\n")
