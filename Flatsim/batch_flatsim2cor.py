@@ -16,8 +16,8 @@ Usage:
 Options:
     --path=<path>      Répertoire contenant les dossiers à traiter (obligatoire)
     --list_int=<file>  Fichier texte contenant "date1 date2" par ligne (optionnel)
-    --prefix=<value>   Prefix of the data at to be process $prefix$date1-$date2$suffix$ [default: 'CNES_Coh_geo']
-    --suffix=<value>   Suffix of the data at the starting of the processes $prefix$date1-$date2$suffix$ [default: '_8rlks.tiff']
+    --prefix=<value>   Prefix of the data at to be process $prefix$date1-$date2$suffix$ 
+    --suffix=<value>   Suffix of the data at the starting of the processes $prefix$date1-$date2$suffix$ 
     --nproc=<n>        Nombre de processus parallèles [default: 4]
     -h --help          Affiche ce message d'aide.
 """
@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import shutil
 from docopt import docopt
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -76,14 +77,14 @@ def main():
     base_dir = arguments["--path"]
     list_int_file = arguments.get("--list_int", None)
     nproc = int(arguments.get("--nproc", 4))
+    if arguments['--prefix'] == None:
+        prefix = 'CNES_Coh_geo'
+    else:
+        prefix = arguments['--prfix']
     if arguments['--suffix'] == None:
-        suffix = 'CNES_Coh_geo'
+        suffix = '_8rlks.tiff'
     else:
         suffix = arguments['--suffix']
-    if arguments['--prefix'] == None:
-        prefix = '_8rlks.tiff'
-    else:
-        prefix = arguments['--prefix']
 
     if base_dir is None:
         print("❌ Erreur : l'option --path est obligatoire.")
@@ -95,7 +96,8 @@ def main():
         print(f"❌ Erreur : le chemin '{base_dir}' n'existe pas ou n'est pas un dossier.")
         sys.exit(1)
 
-    flatsim_script = "flatsim2cor.py"
+    path_dirs = os.environ["PATH"].split(":")
+    flatsim_script = shutil.which("flatsim2cor.py")
     pattern = re.compile(r"^int_\d{8}_\d{8}$")
 
     print(f"\n🔍 Recherche des dossiers dans : {base_dir}\n")

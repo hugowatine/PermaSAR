@@ -17,3 +17,4 @@ echo $ymax
 echo $xres 
 echo $yres
 gdalwarp -te $xmin $ymin $xmax $ymax -tr $xres -$xres -r cubicspline -of GTiff NDSI.tif NDSI_reprojected.tif
+gdalwarp -te $xmin $ymin $xmax $ymax -tr $xres -$xres -r cubicspline -of GTiff NDWI.tif NDWI_reprojected.tif
