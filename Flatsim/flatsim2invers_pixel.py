@@ -28,13 +28,14 @@ Runs a sequence of processing steps to convert FLATSIM outputs into a first time
 17- Runs `invers_pixel`
 18- plot and save the output of invers_pixel
 
-Usage: flatsim2invers_pixel.py --track_path=<path> --step=<value> [--shapefile_path=<path>] [--list_int=<path>]
+Usage: flatsim2invers_pixel.py --track_path=<path> --step=<value> [--shapefile_path=<path>] [--list_int=<path>] [--cutfile=<path>]
 
 Options:
     -h --help               Show this screen.
     --track_path=<path>     Path to the track folder (e.g., A056_centre)
     --shapefile_path=<path> Path to the shapefile used for cropping [default: None]
     --list_int=<path>       Path to the list of int to be process [default: filtered_inter_pair.rsc]
+    --cutfile=<path>        Path to the cutfile used for unwrapping (default: 'CNES_DEM_geo_8rlks_slope_clean_shifted.hgt')
     --step=<value>          Processing step (e.g. 1,2,3)
 """
 
@@ -269,23 +270,23 @@ if 7 in step :
         sys.exit(1)
     else : 
         dint = dint_dirs[0]
-        nproc = 15
-        print(f"7. Create .int, .cor, .unw")
+        nproc = 20
+
         try:
-            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2int.py', f"--path={dint}", f"--nproc={nproc}", f"--suffix='mask_8rlks.tiff'"], check=True)
+             subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2int.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
+        except subprocess.CalledProcessError as e:
+             print(f"Error running comparison script: {e}")
+             sys.exit(1)
+        try:
+            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2cor.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
         except subprocess.CalledProcessError as e:
             print(f"Error running comparison script: {e}")
             sys.exit(1)
         try:
-            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2cor.py', f"--path={dint}", f"--nproc={nproc}", f"--suffix='mask_8rlks.tiff'"], check=True)
+             subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2unw.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
         except subprocess.CalledProcessError as e:
-            print(f"Error running comparison script: {e}")
-            sys.exit(1)
-        try:
-            subprocess.run(["python3", '/home/hugo/PermaSAR/Flatsim/batch_flatsim2unw.py', f"--path={dint}", f"--nproc={nproc}"], check=True)
-        except subprocess.CalledProcessError as e:
-            print(f"Error running comparison script: {e}")
-            sys.exit(1)
+             print(f"Error running comparison script: {e}")
+             sys.exit(1)
 
         for d in glob.glob(os.path.join(dint, 'int_*_*')):
             if not os.path.isdir(d):
@@ -459,7 +460,7 @@ if 10 in step:
         prefix = 'CNES_InW_geo_'
         suffix = '_sd_era_mask'
         #suffix = '_sd_era'
-        nproc=10
+        nproc=20
 
         try:
             subprocess.run(f"/home/hugo/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} -f", shell=True, check=True, cwd=track_path)
@@ -495,7 +496,7 @@ if 11 in step:
         job = 'flat_model'
         prefix = 'CNES_InW_geo_'
         suffix = '_sd_era_mask'
-        nproc=20
+        nproc=10
         #model = os.path.relpath(os.path.join(drow, 'stack_1001_0401_lowRMS_mask_HP158_interpolate_LP2_inverted.tiff'), start=track_path)
         model = os.path.relpath(os.path.join(drow, 'ampwt_coeff_mask_filter400_interpolate_filter2_quad.tiff'), start=track_path)
         #model = os.path.relpath(os.path.join(drow, 'lin_model_filter400_interpolate_filter2_quad.tif'), start=track_path)
@@ -571,10 +572,10 @@ if 13 in step:
         job = 'colin'
         prefix = 'CNES_InW_geo_'
         suffix = '_sd_era_mask_nomodel'
-        nproc=20
+        nproc=10
 
         try:
-            subprocess.run(f"/home/hugo/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc}", shell=True, check=True, cwd=track_path, stdout=subprocess.DEVNULL)
+            subprocess.run(f"/home/hugo/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} -f", shell=True, check=True, cwd=track_path, stdout=subprocess.DEVNULL)
         except subprocess.CalledProcessError as e:
             print(f"Error runing nsb_filtflatunw.py : {e}")
             sys.exit(1)
@@ -630,6 +631,7 @@ if 14 in step:
 if 15 in step:
     dint_dirs = [d for d in glob.glob(os.path.join(track_path, 'INTERFERO')) if os.path.isdir(d)]
     daux_dirs = [d for d in glob.glob(os.path.join(track_path, '2*')) if os.path.isdir(d)]
+    drow_dirs = [d for d in glob.glob(os.path.join(track_path, 'NSB*')) if os.path.isdir(d)]
     
     if not dint_dirs:
         print("15. No INTERFERO/ directory found")
@@ -640,12 +642,18 @@ if 15 in step:
     else : 
         dint = dint_dirs[0]
         daux = daux_dirs[0]
+        drow = drow_dirs[0]
         nsbas_col_proc = os.path.relpath(os.path.join(daux, 'nsbas_col.proc'), start=track_path)
-        cutfile = os.path.relpath(os.path.join(daux, 'CNES_DEM_geo_8rlks_slope_clean_shifted.hgt'), start=track_path)
+        if arguments['--cutfile'] == None:
+            #cutfile = os.path.relpath(os.path.join(daux, 'CNES_DEM_geo_8rlks_slope_clean_shifted.hgt'), start=track_path)
+            cutfile = os.path.relpath(os.path.join(drow, 'proxy.hgt'), start=track_path)
+        else:
+            cutfile = arguments['--cutfile']
         list_int = list_int
         job = 'unwrapping'
         prefix = 'col_'
         suffix = '_sd_era_mask_nomodel'
+        #suffix = '_sd_era_mask'
         #suffix = '_sd_era_nomodel'
         nproc=20
 
@@ -686,6 +694,7 @@ if 16 in step:
         #suffix = '_sd_era_nomodel'
         nproc=20
         model = os.path.relpath(os.path.join(drow, 'ampwt_coeff_mask_filter400_interpolate_filter2_quad.tiff'), start=track_path)
+        #model = os.path.relpath(os.path.join(drow, 'ampwt_coeff_mask_filter400_interpolate_filter2.tiff'), start=track_path)
 
         try:
             subprocess.run(f"/home/hugo/PermaSAR/Flatsim/flatsim_nsb_filtflatunw.py --prefix={prefix} --suffix={suffix} --jobs={job} --list_int={list_int} {nsbas_col_proc} --nproc={nproc} --model={model} -f", shell=True, check=True, cwd=track_path, stdout=subprocess.DEVNULL)
@@ -832,6 +841,41 @@ if 18 in step:
         #     f.write("\nStep 17: Removes linear ramps (r + az) and referencing the IFGs \n")
         #     f.write(f"~PermaSAR/Flatsim/flatsim_invert_ramp_topo_unw.py --ref_zone={ref_zone} --int_list={list_int} --int_path={dint} --prefix={prefix} --suffix={suffix} --flat={flat} --tsinv={tsinv} --estim={estim} --perc={perc} --suffix_output={suffix_output} --ref={ref} --cohpixel={cohpixel} --threshold_coh={threshold_coh} --rlook={rlook} --nproc={nproc}\n")
 
+if 19 in step:
+    drow_dirs = [d for d in glob.glob(os.path.join(track_path, 'NSB*')) if os.path.isdir(d)]
+    dts_dirs = [d for d in glob.glob(os.path.join(track_path, 'ts_corr_bt_bpAPS')) if os.path.isdir(d)]
+
+    if not dts_dirs:
+        print("17. No ts_corr_bt_bpAPS/ directory found")
+        sys.exit(1)
+    elif not drow_dirs:
+        print("17. No ROW NSBAS directory found")
+        sys.exit(1)
+    else : 
+        drow = drow_dirs[0]
+        dts = dts_dirs[0]
+        
+        track_name = dts.split('/')[-2]
+
+        # RMS
+        print("generate amp_model.tiff")
+        try:
+            subprocess.run(f"~/PermaSAR/Tools/r4totif.py --infile=amp_modele --outfile={track_name}_amp_modele.tiff --ref_file=../{drow.split('/')[-1]}/CNES_MV-LOS_geo_8rlks.tiff", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+            subprocess.run(f"gdal_edit.py -a_nodata 0.0 {track_name}_amp_modele.tiff", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+            subprocess.run(f"gdal_calc.py -A {track_name}_amp_modele.tiff --calc='A*4.413824938174363' --type=Float32 --outfile={track_name}_amp_modele_mm.tiff --overwrite", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"Error generating amp_model.tiff : {e}")
+            sys.exit(1)
+
+        print("generate slope_corr_var.tiff")
+        try:
+            subprocess.run(f"~/PermaSAR/Tools/r4totif.py --infile=slope_corr_var --outfile={track_name}_slope_corr_var.tiff --ref_file=../{drow.split('/')[-1]}/CNES_MV-LOS_geo_8rlks.tiff", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+            subprocess.run(f"gdal_edit.py -a_nodata 0.0 {track_name}_slope_corr_var.tiff", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+            subprocess.run(f"gdal_calc.py -A {track_name}_slope_corr_var.tiff --calc='A*-4.413824938174363' --type=Float32 --outfile={track_name}_slope_corr_var_mmyr.tiff --overwrite", shell=True, check=True, cwd=dts, stdout=subprocess.DEVNULL)
+        except subprocess.CalledProcessError as e:
+            print(f"Error generating slope_corr_var.tiff : {e}")
+            sys.exit(1)
+        # scp hugo@193.54.29.81:"/data2/FLATSIM/WestTibet/*/ts_corr_bt_bpAPS/*mm*.tiff"  //Users/hugowatine/Desktop/PHD/These/TIBET/WestTibet/
 
 #../batch_unw_nodata0.py --path=./INTERFERO/ --list=filtered_inter_pair.rsc --prefix=filt_col_ --suffix=_sd_era_mask_corr_8rlks.unw
 #prep_invers_pixel.py --int_path=INTERFERO/ --outputdir=./ts_nocorr --int_list=filtered_inter_pair.rsc --dates_list=./20190516/baseline.rsc --prefix=filt_col_ --suffix=_sd_era_mask_corr_8rlks
