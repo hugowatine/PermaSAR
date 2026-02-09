@@ -4,11 +4,11 @@
 Model coefficient estimation and removal for wrapped interferograms
 
 Usage:
-    flatten_stack.py estimate <phase_filt> <model> [--outfile=<outfile>] [--nreg=<nreg>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot_reg=<yes/no>] [--plot=<yes/no>] [--weightmedian=<yes/no>] [--method=<name>]
+    flatten_stack.py estimate <phase_filt> <model> [--outfile=<outfile>] [--nreg=<nreg>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot_reg=<yes/no>] [--plot=<yes/no>] [--weightmedian=<yes/no>] [--method=<name>] [--eps=<value>]
     flatten_stack.py add <unwrapped> <model> --coeff=<coeff> [--outfile=<outfile>]
     flatten_stack.py remove <phase> <model> --coeff=<coeff> [--outfile=<outfile>]
-    flatten_stack.py 2model <phase> <phase_filt> <model1> <model2> [--outfile=<outfile>] [--nreg=<float>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_model2=<float>] [--mask_center2=<yes/no>] [--thresh_std_model2=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot=<yes/no>] [--plot_reg=<yes/no>]
-    flatten_stack.py <phase> <phase_filt> <model> [--outfile=<outfile>] [--nreg=<float>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot=<yes/no>] [--plot_reg=<yes/no>] [--weightmedian=<yes/no>]
+    flatten_stack.py 2model <phase> <phase_filt> <model1> <model2> [--outfile=<outfile>] [--nreg=<float>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_model2=<float>] [--mask_center2=<yes/no>] [--thresh_std_model2=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot=<yes/no>] [--plot_reg=<yes/no>] [--eps=<value>]
+    flatten_stack.py <phase> <phase_filt> <model> [--outfile=<outfile>] [--nreg=<float>] [--thresh_amp=<float>] [--thresh_cohreg=<float>] [--thresh_model=<float>] [--mask_center=<yes/no>] [--thresh_std_model=<float>] [--thresh_min_pixel=<int>] [--cyclmax=<float>] [--plot=<yes/no>] [--plot_reg=<yes/no>] [--weightmedian=<yes/no>] [--eps=<value>]
     flatten_stack.py -h | --help
 
 Options:
@@ -31,6 +31,7 @@ Options:
     plot                plot intermediate results (default: no)
     plot_reg            plot each phase model relation per region (default: no)
     weightmedian        if yes do a weighted median based on the increase of coherence before and after removing the model (default: no)
+    eps                 Minimal value of initial coherence to select a region before weightmedian (default: 0.3)
     method              Choose the minimisation method used: Grid search (gs), minimize (mini) (default: scipy.optimize.minimize)
 """
 
@@ -414,7 +415,6 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
             delta = list_coh - list_coh_initial
             weights = np.zeros_like(delta)
 
-            eps = 0.3
             valid = mask & (list_coh_initial > eps)
 
             weights[valid] = delta[valid] / list_coh_initial[valid]
@@ -575,7 +575,8 @@ def remove_model_single(phase, model, coeff):
     phase : wrapped phase (radians)
     model : model raster
     """
-    corrected_phase = np.angle(np.exp(1j*phase) * np.exp(-1j*(coeff*model)))
+    model_safe = np.nan_to_num(model, nan=0.0)
+    corrected_phase = np.angle(np.exp(1j*phase) * np.exp(-1j*(coeff*model_safe)))
     return corrected_phase
 
 def remove_model_double(phase, model1, model2, alpha, beta):
@@ -603,7 +604,8 @@ def add_model(phase, model, coeff):
     """
     Add a model to values given a proportionnality coefficient
     """
-    return (phase + coeff*model)
+    model_safe = np.nan_to_num(model, nan=0.0)
+    return (phase + coeff*model_safe)
 
 def arg2value(value, conversion=None, default=None):
     """Convert a string argument if exists otherwise use default value"""
@@ -635,6 +637,7 @@ if __name__ == '__main__':
     mask_center2 = arg2value(arguments["--mask_center2"], str, 'no')
     weightmedian = arg2value(arguments["--weightmedian"], str, 'no')
     method = arg2value(arguments["--method"], str, 'mini')
+    eps = arg2value(arguments["--eps"], float, 0.3)
 
     if arguments["estimate"]:
         # Find the optimal coefficient of proportionality between the phase and the model
@@ -645,7 +648,7 @@ if __name__ == '__main__':
         if not (pfXsize == mXsize and pfYsize == mYsize):
             sys.exit("Error: input rasters (phase, phase_filt, model) do not have the same dimensions.")
         coeff = estimate_coeff(phase_filt, model, nreg=nreg, thresh_amp=thresh_amp, thresh_cohreg=thresh_cohreg,thresh_model=thresh_model, 
-                       thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, mask_center=mask_center,  weightmedian=weightmedian, method=method)
+                       thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, mask_center=mask_center,  weightmedian=weightmedian, method=method, eps=eps)
     elif arguments["add"]:
         # Add the model to an unwrapped file
         unwrapped, unwXsize, unwYsize = open_gdal(arguments["<unwrapped>"], band=2)
@@ -683,7 +686,7 @@ if __name__ == '__main__':
 
         # run flatten for two models (silent: no printing of coeff)
         former_flatten_stack(phase, phase_filt, model1, model2=model2, outfile=outfile, nreg=nreg, thresh_amp=thresh_amp, thresh_cohreg=thresh_cohreg, thresh_model=thresh_model, 
-                                thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, thresh_model2=thresh_model2, thresh_std_model2=thresh_std_model2, mask_center=mask_center, mask_center2=mask_center2, weightmedian=weightmedian, method=method)
+                                thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, thresh_model2=thresh_model2, thresh_std_model2=thresh_std_model2, mask_center=mask_center, mask_center2=mask_center2, weightmedian=weightmedian, method=method, eps=eps)
 
     else:
         # Remove a pattern from a wrapped signal, as in flatten_stack.f from NSBAS
@@ -695,5 +698,5 @@ if __name__ == '__main__':
             sys.exit("Error: input rasters (phase, phase_filt, model) do not have the same dimensions.")
         phase_minus_model = former_flatten_stack(phase, phase_filt, model,
                                 outfile=outfile, nreg=nreg, thresh_amp=thresh_amp, thresh_cohreg=thresh_cohreg, thresh_model=thresh_model, 
-                                thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, thresh_model2=None,  mask_center=mask_center, mask_center2=mask_center2, weightmedian=weightmedian, method=method)
+                                thresh_std_model=thresh_std_model, thresh_min_pixel=thresh_min_pixel, cyclmax=cyclmax, plot=plot, plot_reg=plot_reg, thresh_model2=None,  mask_center=mask_center, mask_center2=mask_center2, weightmedian=weightmedian, method=method, eps=eps)
 
