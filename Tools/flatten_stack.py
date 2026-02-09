@@ -414,7 +414,7 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
             delta = list_coh - list_coh_initial
             weights = np.zeros_like(delta)
 
-            eps = 0.05
+            eps = 0.3
             valid = mask & (list_coh_initial > eps)
 
             weights[valid] = delta[valid] / list_coh_initial[valid]
