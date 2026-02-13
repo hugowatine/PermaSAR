@@ -83,40 +83,33 @@ def plot_reg_model2(alpha, model1_region, beta, model2_region, phi_filt_region):
     except Exception:
         pass
 
-def plot_final(list_coeff, list_coh, model1_copy):
-    fig, axes = plt.subplots(2, 3, figsize=(14, 10))
-    im1 = axes[0, 0].imshow(list_coeff, cmap='RdBu_r',
-                            vmin=-cyclmax, vmax=cyclmax)
-    axes[0, 0].set_title('Coefficients')
-    axes[0, 0].axis('off')
-    plt.colorbar(im1, ax=axes[0, 0], fraction=0.046, pad=0.04)
+def plot_final(list_coeff, list_coh, model1_copy, plot):
+    fig, axes = plt.subplots(1, 3, figsize=(14, 5)) 
 
-    im2 = axes[0, 1].imshow(list_coh, cmap='viridis')
-    axes[0, 1].set_title('Coherence')
-    axes[0, 1].axis('off')
-    plt.colorbar(im2, ax=axes[0, 1], fraction=0.046, pad=0.04)
+    # Coefficients
+    im1 = axes[0].imshow(list_coeff, cmap='RdBu_r', vmin=-cyclmax, vmax=cyclmax)
+    axes[0].set_title('Coefficients')
+    axes[0].axis('off')
+    plt.colorbar(im1, ax=axes[0], fraction=0.046, pad=0.04)
 
-    im3 = axes[0, 2].imshow(
-        model1_copy, cmap='RdBu_r',
-        vmin=np.nanpercentile(model1_copy, 2),
-        vmax=np.nanpercentile(model1_copy, 98)
-    )
-    axes[0, 2].set_title('Model')
-    axes[0, 2].axis('off')
-    plt.colorbar(im3, ax=axes[0, 2], fraction=0.046, pad=0.04)
+    # Coherence
+    im2 = axes[1].imshow(list_coh, cmap='viridis')
+    axes[1].set_title('Coherence')
+    axes[1].axis('off')
+    plt.colorbar(im2, ax=axes[1], fraction=0.046, pad=0.04)
 
-    #x = model1_copy.ravel()
-    #y = list_coh.ravel()
-    #mask = np.isfinite(x) & np.isfinite(y)
-
-    #axes[1, :].scatter(x[mask], y[mask], s=5, alpha=0.5)
-    #axes[1, :].set_xlabel('Model 1')
-    #axes[1, :].set_ylabel('Coherence')
-    #axes[1, :].set_title('Coherence vs Model 1')
-    #axes[1, :].grid(True, alpha=0.3)
+    # Model
+    im3 = axes[2].imshow(model1_copy, cmap='RdBu_r',
+                         vmin=np.nanpercentile(model1_copy, 2),
+                         vmax=np.nanpercentile(model1_copy, 98))
+    axes[2].set_title('Model')
+    axes[2].axis('off')
+    plt.colorbar(im3, ax=axes[2], fraction=0.046, pad=0.04)
 
     plt.tight_layout()
-    plt.show()
+    fig.savefig('coefficients_flatmodel.png', format='PNG', dpi=150)
+    if plot == 'yes':
+        plt.show()
 
 
 def open_gdal(file, band=1, supp_ndv=None, complex=False):
@@ -212,8 +205,7 @@ def former_flatten_stack(phase, phase_filt, model1, model2=None, **kwargs):
     complex_nomodel_phifilt = phase_filt[0] * np.exp(1j*nomodel_phifilt)
     complex_nomodel_phi = phase[0] * np.exp(1j*nomodel_phi)
 
-    if kwargs.get('plot', 'no') == 'yes':
-        try:
+    try:
             fig, axes = plt.subplots(1, 3, figsize=(12, 5))
             im0 = axes[0].imshow(phase_filt[1], cmap='twilight')
             axes[0].set_title('phase_filt (orig)')
@@ -227,9 +219,11 @@ def former_flatten_stack(phase, phase_filt, model1, model2=None, **kwargs):
                 im2 = axes[2].imshow(model1 + 0.0, cmap='RdBu_r', vmin=np.nanpercentile(model1, 2), vmax=np.nanpercentile(model1, 98))
             axes[2].set_title('Model')
             plt.colorbar(im2, ax=axes[2])
+            fig.savefig('flatten_model.png', format='PNG', dpi=150)
             plt.tight_layout()
-            plt.show()
-        except Exception:
+            if kwargs.get('plot', 'no') == 'yes':
+                plt.show()
+    except Exception:
             pass
     
     print('')
@@ -329,7 +323,10 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
             model1_region = model1_split[i,j]
 
             if kwargs['weightmedian'] == 'yes':
-                list_coh_initial[i,j] = np.abs(np.nanmean(np.exp(1j * phi_filt_region)))
+                if len(phi_filt_region) > 0 and not np.all(np.isnan(phi_filt_region)):
+                    list_coh_initial[i,j] = np.abs(np.nanmean(np.exp(1j * phi_filt_region)))
+                else:
+                    list_coh_initial[i,j] = np.nan  
 
             #kwargs['thresh_std_model1'] = 0.0
             if np.count_nonzero(~np.isnan(phi_filt_region)) < kwargs['thresh_min_pixel']:
@@ -412,25 +409,21 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
         else:
             mask = np.isfinite(list_coh_initial) & np.isfinite(list_coh)
 
-            delta = list_coh - list_coh_initial
-            weights = np.zeros_like(delta)
-
-            valid = mask & (list_coh_initial > eps)
-
-            weights[valid] = delta[valid] / list_coh_initial[valid]
+            #delta = list_coh - list_coh_initial
+            #weights = np.zeros_like(delta)
+            #valid = mask & (list_coh_initial > eps)
+            #weights[valid] = delta[valid] / list_coh_initial[valid]
+            #if np.sum(weights) > 0:
+            #    weights /= np.sum(weights)
+            #else:
+            #    weights[:] = 1.0 / weights.size
+            weights = (list_coh - list_coh_initial) / (list_coh_initial + list_coh)
             weights[weights < 0] = 0     # on garde seulement les améliorations
-
-            #weights = weights**2         # accentuer les vraies contributions
-
-            if np.sum(weights) > 0:
-                weights /= np.sum(weights)
-            else:
-                weights[:] = 1.0 / weights.size
-
-            med = weighted_median(list_coeff, weights)
+            #med = weighted_median(list_coeff, weights)
+            med = weighted_average(list_coeff, weights)
 
             plt.figure(figsize=(6,4))
-            plt.scatter(list_coeff.ravel(), weights.ravel(), c=list_model_mean.ravel() ,s=5, alpha=0.4)
+            plt.scatter(list_coeff.ravel(), weights.ravel(), c=list_model_mean.ravel() ,s=5, alpha=0.4, cmap='RdBu_r')
             cbar = plt.colorbar()
             cbar.set_label("Mean model value (window)")
             plt.xlabel("Coefficient")
@@ -438,12 +431,14 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
             plt.grid()
             #plt.show()
 
-        if kwargs['plot'] == 'yes':
-            plt.hist(list_coeff[~np.isnan(list_coeff)], bins=50)
-            plt.axvline(np.nanmedian(list_coeff), color='r', label='median')
-            plt.legend()
-            plt.show()
-            plot_final(list_coeff, list_coh, model1_copy)
+        #fig = plt.figure(figsize=(7,5))
+        #plt.hist(list_coeff[~np.isnan(list_coeff)], bins=50)
+        #plt.axvline(np.nanmedian(list_coeff), color='r', label='median')
+        #plt.legend()
+        #fig.savefig('histograms_flatten_model.pdf', format='PNG',dpi=150)
+        #if kwargs['plot'] == 'yes':
+        #        plt.show()
+        plot_final(list_coeff, list_coh, model1_copy, kwargs['plot'])
 
         plt.figure(figsize=(6,4))
         plt.scatter(list_coeff.ravel(), list_coh.ravel(), c=list_model_mean.ravel() ,s=5, alpha=0.4)
@@ -470,7 +465,6 @@ def estimate_coeff(phase_filt, model, model2=None, **kwargs) -> float:
 
         # === PLOTS ==========================================================
         if kwargs['plot'] == 'yes':
-            print("coucou")
             fig, axes = plt.subplots(2, 5, figsize=(15, 10))
 
             # === MAPS ===
@@ -587,6 +581,26 @@ def remove_model_double(phase, model1, model2, alpha, beta):
     corrected_phase = np.angle(np.exp(1j * phase) * np.exp(-1j * total))
     return corrected_phase
 
+import numpy as np
+
+def weighted_average(values, weights):
+    # Masquer les valeurs NaN
+    mask = ~np.isnan(values)
+    values = values[mask]
+    weights = weights[mask]
+
+    # Vérifier si le tableau est vide après masquage
+    if len(values) == 0:
+        return np.nan
+
+    # Vérifier que les poids sont strictement positifs
+    if np.any(weights < 0):
+        raise ValueError("Les poids ne peuvent pas être négatifs.")
+
+    # Calculer la moyenne pondérée
+    weighted_avg = np.sum(values * weights) / np.sum(weights)
+
+    return weighted_avg
 
 def weighted_median(values, weights):
     mask = ~np.isnan(values)
@@ -637,7 +651,8 @@ if __name__ == '__main__':
     mask_center2 = arg2value(arguments["--mask_center2"], str, 'no')
     weightmedian = arg2value(arguments["--weightmedian"], str, 'no')
     method = arg2value(arguments["--method"], str, 'mini')
-    eps = arg2value(arguments["--eps"], float, 0.3)
+    #eps = arg2value(arguments["--eps"], float, 0.3)
+    eps = arg2value(arguments["--eps"], float, 0.05)
 
     if arguments["estimate"]:
         # Find the optimal coefficient of proportionality between the phase and the model
